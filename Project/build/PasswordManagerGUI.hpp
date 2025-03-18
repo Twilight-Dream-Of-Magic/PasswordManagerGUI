@@ -228,6 +228,8 @@ inline void ApplicationUserLogin
 				CurrentApplicationData.PersonalPasswordInfo.Deserialization(CurrentApplicationData.PersonalPasswordInfoFilePath);
 
 				CurrentApplicationData.ShowGUI_PersonalPasswordInfo = true;
+				CurrentApplicationData.ShowPPI_CreatePasswordInstance = true;
+				CurrentApplicationData.ShowPPI_ChangePasswordInstance = true;
 			}
 			else
 			{
@@ -325,17 +327,17 @@ inline void ShowGUI_PersonalPasswordInfo(std::vector<char>& BufferLoginPassword,
 	
 	if (ImGui::Button("Create Password Instance"))
 	{
-		AppData.ShowPPI_CreatePasswordInstance = true;
+		AppData.ShowPPI_CreatePasswordInstance = !AppData.ShowPPI_CreatePasswordInstance;
 	}
 
 	if (ImGui::Button("Change Password Instance"))
 	{
-		AppData.ShowPPI_ChangePasswordInstance = true;
+		AppData.ShowPPI_ChangePasswordInstance = !AppData.ShowPPI_ChangePasswordInstance;
 	}
 
 	if (ImGui::Button("List All Password Instance"))
 	{
-		AppData.ShowPPI_ListAllPasswordInstance = true;
+		AppData.ShowPPI_ListAllPasswordInstance = !AppData.ShowPPI_ListAllPasswordInstance;
 	}
 
 	if (ImGui::Button("Delete Password Instance By ID"))
@@ -484,8 +486,9 @@ inline void ShowGUI_PPI_CreatePasswordInstance(std::vector<char>& BufferLoginPas
 			AppData.ShowPPI_DecryptionAlgorithms.clear();
 		}
 
-		ImGui::End();
+		
 	}
+	ImGui::End();
 }
 
 inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)

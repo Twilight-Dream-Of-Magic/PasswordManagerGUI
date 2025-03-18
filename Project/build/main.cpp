@@ -69,10 +69,108 @@ int main(int, char**)
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); // Enable vsync
 
+	static const char* default_imgui_ini = R"([Window][Debug##Default]
+Pos=60,60
+Size=400,400
+Collapsed=0
+
+[Window][User Login]
+Pos=0,0
+Size=407,720
+Collapsed=0
+DockId=0x00000007,0
+
+[Window][User Registration]
+Pos=0,0
+Size=407,720
+Collapsed=0
+DockId=0x00000007,1
+
+[Window][Personal Password Info]
+Pos=0,212
+Size=407,508
+Collapsed=0
+DockId=0x00000008,0
+
+[Window][List All Password Instance]
+Pos=828,897
+Size=871,131
+Collapsed=0
+DockId=0x00000004,0
+
+[Window][Main DockSpace]
+Pos=60,60
+Size=32,32
+Collapsed=0
+
+[Window][DockSpaceViewport_11111111]
+Pos=0,0
+Size=1280,720
+Collapsed=0
+
+[Window][Create Password Instance]
+Pos=409,0
+Size=871,720
+Collapsed=0
+DockId=0x00000003,0
+
+[Window][Change Password Instance By ID]
+Pos=409,0
+Size=871,720
+Collapsed=0
+DockId=0x00000003,1
+
+[Window][Delete Password Instance]
+Pos=595,640
+Size=368,100
+Collapsed=0
+
+[Window][Confirm Delete All Password Instance]
+Pos=840,300
+Size=339,94
+Collapsed=0
+
+[Window][List Password Instance By ID]
+Pos=595,640
+Size=368,100
+Collapsed=0
+
+[Window][List Password Instance By Description]
+ViewportPos=814,816
+ViewportId=0x4E7A0E1D
+Size=623,481
+Collapsed=0
+
+[Window][Change Master Key With System Password]
+Pos=419,875
+Size=1280,153
+Collapsed=0
+DockId=0x0000000A,0
+
+[Window][Dear ImGui Demo]
+ViewportPos=827,274
+ViewportId=0xE927CF2F
+Size=549,720
+Collapsed=0
+
+[Docking][Data]
+DockSpace       ID=0x8B93E3BD Window=0xA787BDB4 Pos=531,443 Size=1280,720 Split=Y
+  DockNode      ID=0x00000009 Parent=0x8B93E3BD SizeRef=1280,565 Split=X
+    DockNode    ID=0x00000001 Parent=0x00000009 SizeRef=407,720 Split=Y Selected=0xF2C84012
+      DockNode  ID=0x00000007 Parent=0x00000001 SizeRef=259,165 Selected=0xF2C84012
+      DockNode  ID=0x00000008 Parent=0x00000001 SizeRef=259,398 Selected=0x958B1C7B
+    DockNode    ID=0x00000002 Parent=0x00000009 SizeRef=871,720 Split=Y
+      DockNode  ID=0x00000003 Parent=0x00000002 SizeRef=957,587 CentralNode=1 Selected=0xB555E39B
+      DockNode  ID=0x00000004 Parent=0x00000002 SizeRef=957,131 Selected=0x7B4AC748
+  DockNode      ID=0x0000000A Parent=0x8B93E3BD SizeRef=1280,153 Selected=0xC59CC0DE
+
+)";
+
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	ImGuiIO& io = ImGui::GetIO(); //(void)io;
+	io.IniFilename = nullptr;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
@@ -85,11 +183,21 @@ int main(int, char**)
 	//ImGui::StyleColorsLight();
 
 	// When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+	ImGui::StyleColorsLight();
 	ImGuiStyle& style = ImGui::GetStyle();
+	style.FrameBorderSize = 1.0f;
+	style.FrameRounding = 4.0f;
 	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 	{
 		style.WindowRounding = 0.0f;
 		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+	}
+
+	if (!std::filesystem::exists("imgui.ini")) {
+		ImGui::LoadIniSettingsFromMemory(default_imgui_ini);
+	}
+	else {
+		ImGui::LoadIniSettingsFromDisk("imgui.ini");
 	}
 
 	// Setup Platform/Renderer backends
@@ -149,15 +257,14 @@ int main(int, char**)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
+		ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+
 		ApplicationUserRegistration(BufferRegisterUsername, BufferRegisterPassword, ShowRegistrationSuccessPopup, ShowRegistrationFailPopup);
 
 		ApplicationUserLogin(BufferLoginUsername, BufferLoginPassword, ShowInvalidCurrentUUIDFilePopup, ShowUsernameAuthenticationFailedPopup, ShowPasswordAuthenticationFailedPopup, ShowLoadUserFailedPopup);
 
 		if(CurrentApplicationData.ShowGUI_PersonalPasswordInfo)
-		{
 			ShowGUI_PersonalPasswordInfo(BufferLoginPassword, CurrentApplicationData);
-		}
-
 		if(CurrentApplicationData.ShowPPI_CreatePasswordInstance)
 			ShowGUI_PPI_CreatePasswordInstance(BufferLoginPassword, CurrentApplicationData);
 		if(CurrentApplicationData.ShowPPI_ChangePasswordInstance)
@@ -165,12 +272,12 @@ int main(int, char**)
 		if(CurrentApplicationData.ShowPPI_ListAllPasswordInstance)
 			ShowGUI_PPI_ListAllPasswordInstance(BufferLoginPassword, CurrentApplicationData);
 
-		if(CurrentApplicationData.ShowPPI_DeletePasswordInstance)
+		if (CurrentApplicationData.ShowPPI_DeletePasswordInstance)
 			ShowGUI_PPI_DeletePasswordInstance(CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_ConfirmDeleteAllPasswordInstance)
+		if (CurrentApplicationData.ShowPPI_ConfirmDeleteAllPasswordInstance)
 			ShowGUI_PPI_DeleteAllPasswordInstance(CurrentApplicationData);
 
-		if(CurrentApplicationData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword)
+		if (CurrentApplicationData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword)
 			ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, CurrentApplicationData);
 
 		ShowGUI_PPI_FindPasswordInstanceByID(BufferLoginPassword, CurrentApplicationData);
