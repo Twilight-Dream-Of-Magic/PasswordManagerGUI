@@ -4,3 +4,6 @@
 [submodule "TDOM-EncryptOrDecryptFile-Reborn"]
 	path = TDOM-EncryptOrDecryptFile-Reborn
 	url = https://github.com/Twilight-Dream-Of-Magic/TDOM-EncryptOrDecryptFile-Reborn.git
+[submodule "ImGuiFileDialog"]
+	path = ImGuiFileDialog
+	url = https://github.com/aiekick/ImGuiFileDialog

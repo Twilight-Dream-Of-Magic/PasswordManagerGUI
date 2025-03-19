@@ -17,6 +17,7 @@
 #endif
 
 #include <GLFW/glfw3.h> // Will drag system OpenGL headers
+#include "../ImGuiFileDialog/ImGuiFileDialog.h"
 
 #include "PasswordManagerGUI.hpp"
 
@@ -69,10 +70,15 @@ int main(int, char**)
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1); // Enable vsync
 
+	static const char* default_imgui_ini = (
+		#include "imgui_rawstring.txt"
+	);
+
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	ImGuiIO& io = ImGui::GetIO(); //(void)io;
+	io.IniFilename = nullptr;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
@@ -85,11 +91,21 @@ int main(int, char**)
 	//ImGui::StyleColorsLight();
 
 	// When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+	ImGui::StyleColorsLight();
 	ImGuiStyle& style = ImGui::GetStyle();
+	style.FrameBorderSize = 1.0f;
+	style.FrameRounding = 4.0f;
 	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 	{
 		style.WindowRounding = 0.0f;
 		style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+	}
+
+	if (!std::filesystem::exists("imgui.ini")) {
+		ImGui::LoadIniSettingsFromMemory(default_imgui_ini);
+	}
+	else {
+		ImGui::LoadIniSettingsFromDisk("imgui.ini");
 	}
 
 	// Setup Platform/Renderer backends
@@ -149,15 +165,14 @@ int main(int, char**)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
+		ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+
 		ApplicationUserRegistration(BufferRegisterUsername, BufferRegisterPassword, ShowRegistrationSuccessPopup, ShowRegistrationFailPopup);
 
 		ApplicationUserLogin(BufferLoginUsername, BufferLoginPassword, ShowInvalidCurrentUUIDFilePopup, ShowUsernameAuthenticationFailedPopup, ShowPasswordAuthenticationFailedPopup, ShowLoadUserFailedPopup);
 
 		if(CurrentApplicationData.ShowGUI_PersonalPasswordInfo)
-		{
 			ShowGUI_PersonalPasswordInfo(BufferLoginPassword, CurrentApplicationData);
-		}
-
 		if(CurrentApplicationData.ShowPPI_CreatePasswordInstance)
 			ShowGUI_PPI_CreatePasswordInstance(BufferLoginPassword, CurrentApplicationData);
 		if(CurrentApplicationData.ShowPPI_ChangePasswordInstance)
@@ -165,16 +180,21 @@ int main(int, char**)
 		if(CurrentApplicationData.ShowPPI_ListAllPasswordInstance)
 			ShowGUI_PPI_ListAllPasswordInstance(BufferLoginPassword, CurrentApplicationData);
 
-		if(CurrentApplicationData.ShowPPI_DeletePasswordInstance)
+		if (CurrentApplicationData.ShowPPI_DeletePasswordInstance)
 			ShowGUI_PPI_DeletePasswordInstance(CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_ConfirmDeleteAllPasswordInstance)
+		if (CurrentApplicationData.ShowPPI_ConfirmDeleteAllPasswordInstance)
 			ShowGUI_PPI_DeleteAllPasswordInstance(CurrentApplicationData);
 
-		if(CurrentApplicationData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword)
+		if (CurrentApplicationData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword)
 			ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, CurrentApplicationData);
 
 		ShowGUI_PPI_FindPasswordInstanceByID(BufferLoginPassword, CurrentApplicationData);
 		ShowGUI_PPI_FindPasswordInstanceByDescription(BufferLoginPassword, CurrentApplicationData);
+
+		if(CurrentApplicationData.ShowGUI_PersonalFileInfo)
+		{
+			ShowGUI_PersonalFileInfo(CurrentApplicationData);
+		}
 
 		// Rendering
 		ImGui::Render();

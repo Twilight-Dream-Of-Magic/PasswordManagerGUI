@@ -46,6 +46,9 @@
 #include "CommonSecurity/AEAD_Cascaded.hpp"
 //#include "CommonSecurity/Shamir's-SecretSharing.hpp"
 
+
+/***** PersonaPasswordInfo Functions *****/
+
 void PersonalPasswordInfo::Serialization(const std::filesystem::path& FilePath)
 {
 	// Serialize the JSON data
@@ -83,7 +86,7 @@ void PersonalPasswordInfo::Serialization(const std::filesystem::path& FilePath)
 	PersonalPasswordInfo_JSON["PasswordInstances"] = PasswordInstances;
 
 	// Write the JSON file
-	std::ofstream file(FilePath, std::ios::trunc);
+	std::ofstream file(FilePath.c_str(), std::ios::trunc);
 
 	if (file.is_open())
 	{
@@ -94,16 +97,18 @@ void PersonalPasswordInfo::Serialization(const std::filesystem::path& FilePath)
 	else
 	{
 		std::cerr << "Error: Failed to open the file for writing." << std::endl;
+		std::cerr << FilePath.string() << std::endl;
 	}
 }
 
 void PersonalPasswordInfo::Deserialization(const std::filesystem::path& FilePath)
 {
 	// Read the JSON file
-	std::ifstream file(FilePath);
+	std::ifstream file(FilePath.c_str());
 	if (!file.is_open())
 	{
 		std::cerr << "Error: Failed to open the file for reading." << std::endl;
+		std::cerr << FilePath.string() << std::endl;
 		return;
 	}
 
@@ -569,6 +574,434 @@ void PersonalPasswordInfo::ChangeInstanceMasterKeyWithSystemPassword(const std::
 	this->Serialization(FilePath);
 }
 
+
+/***** PersonalFileInfo Functions *****/
+
+// PersonalFileInfo 类的序列化辅助函数
+void PersonalFileInfo::SerializeInstances(nlohmann::json& jsonData) const
+{
+	nlohmann::json FileInstancesJSON;
+
+	for (const PersonalFileInstance& FileInstance : this->Instances)
+	{
+		nlohmann::json JsonObject;
+		JsonObject["ID"] = FileInstance.ID;
+		JsonObject["EncryptionAlgorithmNames"] = FileInstance.EncryptionAlgorithmNames;
+		JsonObject["DecryptionAlgorithmNames"] = FileInstance.DecryptionAlgorithmNames;
+		FileInstancesJSON.push_back(JsonObject);
+	}
+
+	jsonData["FileInstances"] = FileInstancesJSON;
+}
+
+// PersonalFileInfo 类的反序列化辅助函数
+void PersonalFileInfo::DeserializeInstances(const nlohmann::json& jsonData)
+{
+	if (jsonData.contains("FileInstances") && jsonData["FileInstances"].is_array())
+	{
+		Instances.clear();
+		for (const auto& JsonObject : jsonData["FileInstances"])
+		{
+			if (JsonObject.is_object())
+			{
+				PersonalFileInstance FileInstance;
+				if (JsonObject.contains("ID"))
+					FileInstance.ID = JsonObject["ID"];
+				if (JsonObject.contains("EncryptionAlgorithmNames"))
+					FileInstance.EncryptionAlgorithmNames = JsonObject["EncryptionAlgorithmNames"];
+				if (JsonObject.contains("DecryptionAlgorithmNames"))
+					FileInstance.DecryptionAlgorithmNames = JsonObject["DecryptionAlgorithmNames"];
+				Instances.push_back(FileInstance);
+			}
+		}
+	}
+}
+
+// 序列化函数
+void PersonalFileInfo::Serialization(const std::filesystem::path& FilePath)
+{
+	nlohmann::json PersonalFileInfo_JSON;
+
+	SerializeInstances(PersonalFileInfo_JSON);
+
+	// 写入 JSON 文件
+	std::ofstream file(FilePath, std::ios::trunc);
+	if (file.is_open())
+	{
+		file << PersonalFileInfo_JSON.dump(4);
+		file.close();
+		// std::cout << "PersonalFileInfo Serialization completed to " << FilePath << std::endl;
+	}
+	else
+	{
+		std::cerr << "Error: Failed to open the file for writing: " << FilePath << std::endl;
+	}
+}
+
+// 反序列化函数
+void PersonalFileInfo::Deserialization(const std::filesystem::path& FilePath)
+{
+	// 读取 JSON 文件
+	std::ifstream file(FilePath);
+	if (!file.is_open())
+	{
+		std::cerr << "Error: Failed to open the file for reading: " << FilePath << std::endl;
+		return;
+	}
+
+	nlohmann::json PersonalFileInfo_JSON;
+	file >> PersonalFileInfo_JSON;
+	file.close();
+
+	// 反序列化 JSON 数据
+	if (PersonalFileInfo_JSON.is_object())
+	{
+		DeserializeInstances(PersonalFileInfo_JSON);
+		// std::cout << "PersonalFileInfo Deserialization completed from " << FilePath << std::endl;
+	}
+	else
+	{
+		std::cerr << "Error: JSON data is not in the expected format for PersonalFileInfo." << std::endl;
+	}
+}
+
+// 创建新的文件实例
+PersonalFileInfo::PersonalFileInstance PersonalFileInfo::CreateFileInstance(
+	const std::string& Token,
+	const std::vector<std::string>& EncryptionAlgorithms,
+	const std::vector<std::string>& DecryptionAlgorithms
+)
+{
+	PersonalFileInstance instance;
+
+	instance.ID = this->Instances.empty() ? 1 : (this->Instances.back().ID + 1);
+	instance.EncryptionAlgorithmNames = EncryptionAlgorithms;
+	instance.DecryptionAlgorithmNames = DecryptionAlgorithms;
+
+	return instance;
+}
+
+// 追加文件实例
+void PersonalFileInfo::AppendFileInstance(const PersonalFileInstance& instance)
+{
+	this->Instances.push_back(instance);
+}
+
+// 删除文件实例
+bool PersonalFileInfo::RemoveFileInstance(std::uint64_t ID)
+{
+	auto it = std::remove_if(
+		Instances.begin(), Instances.end(),
+		[ID](const PersonalFileInstance& instance)
+		{
+			return instance.ID == ID;
+		}
+	);
+
+	if (it != Instances.end())
+	{
+		Instances.erase(it, Instances.end());
+		return true;
+	}
+
+	return false;
+}
+
+// 删除所有文件实例
+void PersonalFileInfo::RemoveAllFileInstances()
+{
+	this->Instances.clear();
+	this->Instances.shrink_to_fit();
+}
+
+// 获取所有文件实例
+PersonalFileInfo::PersonalFileInstance& PersonalFileInfo::GetFileInstanceByID(uint64_t ID)
+{
+	if(this->Instances.empty())
+	{
+		my_cpp2020_assert(false, "File Instance ID not found.", std::source_location::current());
+	}
+
+	return this->Instances[ID];
+}
+
+
+bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& SourceFilePath, const std::filesystem::path& EncryptedFilePath)
+{
+	// 检查源文件是否存在
+	if (!std::filesystem::exists(SourceFilePath))
+	{
+		std::cerr << "Error: Source file does not exist: " << SourceFilePath << std::endl;
+		return false;
+	}
+
+	// 读取源文件内容
+	std::ifstream inputFile(SourceFilePath, std::ios::binary);
+	if (!inputFile.is_open())
+	{
+		std::cerr << "Error: Failed to open source file for reading: " << SourceFilePath << std::endl;
+		return false;
+	}
+
+	std::vector<uint8_t> fileData((std::istreambuf_iterator<char>(inputFile)), std::istreambuf_iterator<char>());
+	inputFile.close();
+
+	// 计算源文件的哈希值
+	CommonSecurity::SHA::Hasher::HasherTools MainHasher;
+	std::optional<std::string> optionalSourceHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(fileData));
+	if (!optionalSourceHash.has_value())
+	{
+		std::cerr << "Error: Failed to compute source file hash." << std::endl;
+		return false;
+	}
+	std::string sourceHashHex = optionalSourceHash.value();
+	std::vector<uint8_t> sourceHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(sourceHashHex);
+	if (sourceHashBytes.size() != 64) // SHA-512 是 64 字节
+	{
+		std::cerr << "Error: Invalid source hash size." << std::endl;
+		return false;
+	}
+
+	// 生成主密钥
+	std::vector<uint8_t> MasterKey = GenerateMasterBytesKeyFromToken(Token);
+
+	// 生成加密算法的密钥
+	// 如果需要为每个加密算法生成独立的密钥，可以在此扩展
+	std::vector<uint8_t> EncryptionKey = MasterKey; // 简化为使用主密钥 TODO: 需要子密钥函数
+
+	// TODO: 实现 分块多重加密
+
+	// 多重加密
+	for (const auto& Algorithm : Instance.EncryptionAlgorithmNames)
+	{
+		if (Algorithm == CryptoCipherAlgorithmNames[0]) // AES
+		{
+			CommonSecurity::AES::DataWorker256 AES_128_256;
+			AES_128_256.CTR_StreamModeBasedEncryptFunction(fileData, EncryptionKey, fileData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[1]) // RC6
+		{
+			CommonSecurity::RC6::DataWorker128_256 RC6_128_256;
+			RC6_128_256.CTR_StreamModeBasedEncryptFunction(fileData, EncryptionKey, fileData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[2]) // SM4
+		{
+			CommonSecurity::ChinaShangYongMiMa4::DataWorker256 SM4_128_256;
+			SM4_128_256.CTR_StreamModeBasedEncryptFunction(fileData, EncryptionKey, fileData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[3]) // Twofish
+		{
+			CommonSecurity::Twofish::DataWorker256 Twofish_128_256;
+			Twofish_128_256.CTR_StreamModeBasedEncryptFunction(fileData, EncryptionKey, fileData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[4]) // Serpent
+		{
+			CommonSecurity::Serpent::DataWorker256 Serpent_128_256;
+			Serpent_128_256.CTR_StreamModeBasedEncryptFunction(fileData, EncryptionKey, fileData);
+		}
+		else
+		{
+			std::cerr << "Error: Unsupported encryption algorithm: " << Algorithm << std::endl;
+			return false;
+		}
+	}
+
+	// 计算加密后数据的哈希值
+	std::optional<std::string> optionalEncryptedHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(fileData));
+	if (!optionalEncryptedHash.has_value())
+	{
+		std::cerr << "Error: Failed to compute encrypted data hash." << std::endl;
+		return false;
+	}
+	std::string encryptedHashHex = optionalEncryptedHash.value();
+	std::vector<uint8_t> encryptedHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(encryptedHashHex);
+	if (encryptedHashBytes.size() != 64) // SHA-512 是 64 字节
+	{
+		std::cerr << "Error: Invalid encrypted data hash size." << std::endl;
+		return false;
+	}
+
+	// 写入加密文件
+	std::ofstream outputFile(EncryptedFilePath, std::ios::binary | std::ios::trunc);
+	if (!outputFile.is_open())
+	{
+		std::cerr << "Error: Failed to open encrypted file for writing: " << EncryptedFilePath << std::endl;
+		return false;
+	}
+
+	// 写入源文件哈希
+	outputFile.write(reinterpret_cast<const char*>(sourceHashBytes.data()), sourceHashBytes.size());
+
+	// 写入加密数据
+	outputFile.write(reinterpret_cast<const char*>(fileData.data()), fileData.size());
+
+	// 写入加密数据哈希
+	outputFile.write(reinterpret_cast<const char*>(encryptedHashBytes.data()), encryptedHashBytes.size());
+
+	outputFile.close();
+
+	// 清除敏感数据
+	memory_set_no_optimize_function<0x00>(MasterKey.data(), MasterKey.size() * sizeof(uint8_t));
+	memory_set_no_optimize_function<0x00>(EncryptionKey.data(), EncryptionKey.size() * sizeof(uint8_t));
+
+	std::cout << "File encrypted successfully: " << EncryptedFilePath << std::endl;
+	return true;
+}
+
+bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& EncryptedFilePath, const std::filesystem::path& DecryptedFilePath)
+{
+	// 检查加密文件是否存在
+	if (!std::filesystem::exists(EncryptedFilePath))
+	{
+		std::cerr << "Error: Encrypted file does not exist: " << EncryptedFilePath << std::endl;
+		return false;
+	}
+
+	// 读取加密文件内容
+	std::ifstream inputFile(EncryptedFilePath, std::ios::binary);
+	if (!inputFile.is_open())
+	{
+		std::cerr << "Error: Failed to open encrypted file for reading: " << EncryptedFilePath << std::endl;
+		return false;
+	}
+
+	// 获取文件大小
+	inputFile.seekg(0, std::ios::end);
+	std::streampos fileSize = inputFile.tellg();
+	inputFile.seekg(0, std::ios::beg);
+
+	if (fileSize < 128) // 至少包含两个 SHA-512 哈希（64 * 2 = 128 字节）
+	{
+		std::cerr << "Error: Encrypted file is too small to contain necessary hashes." << std::endl;
+		inputFile.close();
+		return false;
+	}
+
+	// 读取源文件哈希
+	std::vector<uint8_t> sourceHashBytes(64, 0x00);
+	inputFile.read(reinterpret_cast<char*>(sourceHashBytes.data()), 64);
+
+	// 读取加密数据
+	std::size_t encryptedDataSize = static_cast<std::size_t>(fileSize) - 128;
+	std::vector<uint8_t> encryptedData(encryptedDataSize, 0x00);
+	inputFile.read(reinterpret_cast<char*>(encryptedData.data()), encryptedDataSize);
+
+	// 读取加密数据哈希
+	std::vector<uint8_t> encryptedHashBytes(64, 0x00);
+	inputFile.read(reinterpret_cast<char*>(encryptedHashBytes.data()), 64);
+
+	inputFile.close();
+
+	// 计算加密数据的哈希并验证
+	CommonSecurity::SHA::Hasher::HasherTools MainHasher;
+	std::optional<std::string> optionalComputedEncryptedHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(encryptedData));
+	if (!optionalComputedEncryptedHash.has_value())
+	{
+		std::cerr << "Error: Failed to compute encrypted data hash." << std::endl;
+		return false;
+	}
+	std::string computedEncryptedHashHex = optionalComputedEncryptedHash.value();
+	std::vector<uint8_t> computedEncryptedHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(computedEncryptedHashHex);
+	if (computedEncryptedHashBytes.size() != 64)
+	{
+		std::cerr << "Error: Invalid computed encrypted data hash size." << std::endl;
+		return false;
+	}
+
+	// 比对加密数据哈希
+	if (computedEncryptedHashBytes != encryptedHashBytes)
+	{
+		std::cerr << "Error: Encrypted data hash mismatch. The file may be corrupted or tampered with." << std::endl;
+		return false;
+	}
+
+	// 生成主密钥
+	std::vector<uint8_t> MasterKey = GenerateMasterBytesKeyFromToken(Token);
+
+	// 生成解密算法的密钥
+	std::vector<uint8_t> DecryptionKey = MasterKey; // 简化为使用主密钥 TODO: 需要子密钥函数
+
+	// TODO: 实现 分块多重解密
+
+	// 多重解密（逆序）
+	for (auto it = Instance.DecryptionAlgorithmNames.rbegin(); it != Instance.DecryptionAlgorithmNames.rend(); ++it)
+	{
+		const auto& Algorithm = *it;
+
+		if (Algorithm == CryptoCipherAlgorithmNames[0]) // AES
+		{
+			CommonSecurity::AES::DataWorker256 AES_128_256;
+			AES_128_256.CTR_StreamModeBasedDecryptFunction(encryptedData, DecryptionKey, encryptedData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[1]) // RC6
+		{
+			CommonSecurity::RC6::DataWorker128_256 RC6_128_256;
+			RC6_128_256.CTR_StreamModeBasedDecryptFunction(encryptedData, DecryptionKey, encryptedData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[2]) // SM4
+		{
+			CommonSecurity::ChinaShangYongMiMa4::DataWorker256 SM4_128_256;
+			SM4_128_256.CTR_StreamModeBasedDecryptFunction(encryptedData, DecryptionKey, encryptedData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[3]) // Twofish
+		{
+			CommonSecurity::Twofish::DataWorker256 Twofish_128_256;
+			Twofish_128_256.CTR_StreamModeBasedDecryptFunction(encryptedData, DecryptionKey, encryptedData);
+		}
+		else if (Algorithm == CryptoCipherAlgorithmNames[4]) // Serpent
+		{
+			CommonSecurity::Serpent::DataWorker256 Serpent_128_256;
+			Serpent_128_256.CTR_StreamModeBasedDecryptFunction(encryptedData, DecryptionKey, encryptedData);
+		}
+		else
+		{
+			std::cerr << "Error: Unsupported decryption algorithm: " << Algorithm << std::endl;
+			return false;
+		}
+	}
+
+	// 计算解密后数据的哈希值并验证
+	std::optional<std::string> optionalDecryptedHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(encryptedData));
+	if (!optionalDecryptedHash.has_value())
+	{
+		std::cerr << "Error: Failed to compute decrypted data hash." << std::endl;
+		return false;
+	}
+	std::string decryptedHashHex = optionalDecryptedHash.value();
+	std::vector<uint8_t> decryptedHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(decryptedHashHex);
+	if (decryptedHashBytes.size() != 64)
+	{
+		std::cerr << "Error: Invalid decrypted data hash size." << std::endl;
+		return false;
+	}
+
+	// 比对解密后数据的哈希
+	if (decryptedHashBytes != sourceHashBytes)
+	{
+		std::cerr << "Error: Decrypted data hash mismatch. Decryption failed or data is corrupted." << std::endl;
+		return false;
+	}
+
+	// 将解密后的数据写入目标文件
+	std::ofstream outputFile(DecryptedFilePath, std::ios::binary | std::ios::trunc);
+	if (!outputFile.is_open())
+	{
+		std::cerr << "Error: Failed to open decrypted file for writing: " << DecryptedFilePath << std::endl;
+		return false;
+	}
+
+	outputFile.write(reinterpret_cast<const char*>(encryptedData.data()), encryptedData.size());
+	outputFile.close();
+
+	// 清除敏感数据
+	memory_set_no_optimize_function<0x00>(MasterKey.data(), MasterKey.size() * sizeof(uint8_t));
+	memory_set_no_optimize_function<0x00>(DecryptionKey.data(), DecryptionKey.size() * sizeof(uint8_t));
+
+	std::cout << "File decrypted successfully: " << DecryptedFilePath << std::endl;
+	return true;
+}
+
+
 inline void GenerateUUID(std::vector<char> UserName, const std::string& RandomSalt, uint64_t& RegistrationTime, std::string& UUID)
 {
 	std::string Name = std::string(UserName.begin(), UserName.end());
@@ -792,7 +1225,27 @@ inline std::string GenerateStringFileUUIDFromStringUUID(const std::string& UUID)
 {
 	std::vector<std::uint8_t> TruncatedUUIDBytes = HashUUID(UtilTools::DataFormating::Base64Coder::Author1::decode(UUID), 250);
 
-	std::string UniqueFileName = UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(TruncatedUUIDBytes);
+	std::string result = UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(TruncatedUUIDBytes);
+
+	std::string UniqueFileName;
+
+	//ASCII 0~15 Number Characters Convert To Hexadecimal Characters
+	for (uint8_t c : result)
+	{
+		auto value = static_cast<uint32_t>(c);
+		// 确保数值在0-15范围内
+		value &= 0x0F;
+		if (value < 10)
+		{
+			UniqueFileName += (uint8_t)'0' + value;
+		}
+		else
+		{
+			UniqueFileName += (uint8_t)'A' + (value - 10);
+		}
+	}
+
+	std::cout << "File UUID: " << UniqueFileName << std::endl;
 
 	return UniqueFileName;
 }
@@ -1148,7 +1601,7 @@ inline std::vector<std::uint8_t> GenerateMasterBytesKeyFromToken(const std::stri
 inline void MakePersonalPasswordDataFile(const std::string& UniqueFileName, const std::string& Token)
 {
 	// 指定存储文件的目录（PersonalPasswordData）
-	std::filesystem::path directoryPath("PersonalPasswordData");
+	std::filesystem::path directoryPath("PersonalPasswordData/");
 
 	if (!std::filesystem::is_directory(directoryPath))
 	{
@@ -1161,7 +1614,7 @@ inline void MakePersonalPasswordDataFile(const std::string& UniqueFileName, cons
 	}
 
 	// 构建文件的完整路径
-	std::filesystem::path filePath = std::string(directoryPath.string() + "/" + UniqueFileName + ".json");
+	std::filesystem::path filePath = std::string(directoryPath.string() + UniqueFileName + ".json");
 
 	if (std::filesystem::exists(filePath))
 	{
@@ -1189,6 +1642,7 @@ inline void FirstLoginLogic(const std::vector<char>& BufferLoginPassword, const 
 
 	CurrentUserData.IsFirstLogin = false;
 	CurrentUserData.PersonalPasswordInfoFileName = UniqueFileName;
+	CurrentUserData.PersonalInfoFileName = "File_" + UniqueFileName;
 
 	SavePasswordManagerUser({CurrentUserKey, CurrentUserData});
 }

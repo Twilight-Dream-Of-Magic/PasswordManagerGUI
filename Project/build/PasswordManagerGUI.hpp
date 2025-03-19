@@ -5,6 +5,7 @@
 struct ApplicationData
 {
 	bool ShowGUI_PersonalPasswordInfo = false;
+	bool ShowGUI_PersonalFileInfo = false;
 
 	/* About PersonalPasswordInfo GUI Data */
 
@@ -43,11 +44,34 @@ struct ApplicationData
 
 	bool ShowPPI_ChangeEncryptedPassword = false;
 
+	/* About PersonalFileInfo GUI Data */
+
+	bool ShowPFI_NeedAES = false;
+	bool ShowPFI_NeedRC6 = false;
+	bool ShowPFI_NeedSM4 = false;
+	bool ShowPFI_NeedTwofish = false;
+	bool ShowPFI_NeedSerpent = false;
+
+	bool ShowPFI_CreateFileInstance = false;
+	bool ShowPFI_DeleteFileInstance = false;
+	bool ShowPFI_EncryptFile = false;
+	bool ShowPFI_DecryptFile = false;
+	bool ShowPFI_ConfirmDeleteAllFileInstances = false;
+
+	std::uint64_t ShowPFI_SelectedFileInstanceID = 0;
+	std::vector<std::string> ShowPFI_EncryptionAlgorithms;
+	std::vector<std::string> ShowPFI_DecryptionAlgorithms;
+
+	/* About PasswordManager Data */
+
 	PasswordManagerUserKey UserKey;
 	PasswordManagerUserData UserData;
 
 	PersonalPasswordInfo PersonalPasswordInfo;
 	std::filesystem::path PersonalPasswordInfoFilePath;
+
+	PersonalFileInfo PersonalFileInfo;
+	std::filesystem::path PersonalFileInfoFilePath;
 };
 
 //global object
@@ -224,10 +248,26 @@ inline void ApplicationUserLogin
 				CurrentApplicationData.UserKey = CurrentUserKey;
 				CurrentApplicationData.UserData = CurrentUserData;
 
-				CurrentApplicationData.PersonalPasswordInfoFilePath = std::filesystem::path(std::string("PersonalPasswordData") + "/" + CurrentApplicationData.UserData.PersonalPasswordInfoFileName + ".json");
+				CurrentApplicationData.PersonalPasswordInfoFilePath = std::filesystem::path(std::string("PersonalPasswordData/") + CurrentApplicationData.UserData.PersonalPasswordInfoFileName + ".json");
 				CurrentApplicationData.PersonalPasswordInfo.Deserialization(CurrentApplicationData.PersonalPasswordInfoFilePath);
 
 				CurrentApplicationData.ShowGUI_PersonalPasswordInfo = true;
+				
+				CurrentApplicationData.ShowPPI_CreatePasswordInstance = true;
+				CurrentApplicationData.ShowPPI_ChangePasswordInstance = true;
+
+				CurrentApplicationData.PersonalFileInfoFilePath = std::filesystem::path("PersonalFileData/" + CurrentApplicationData.UserData.PersonalInfoFileName + ".json");
+
+				if (std::filesystem::exists(CurrentApplicationData.PersonalFileInfoFilePath))
+				{
+					CurrentApplicationData.PersonalFileInfo.Deserialization(CurrentApplicationData.PersonalFileInfoFilePath);
+				}
+				else
+				{
+					CurrentApplicationData.PersonalFileInfo.Serialization(CurrentApplicationData.PersonalFileInfoFilePath);
+				}
+
+				CurrentApplicationData.ShowGUI_PersonalFileInfo = true;
 			}
 			else
 			{
@@ -319,23 +359,25 @@ inline void ApplicationUserLogin
 	}
 }
 
+/* ShowGUI PersonalPasswordInfo Part */
+
 inline void ShowGUI_PersonalPasswordInfo(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
 	ImGui::Begin("Personal Password Info");
 	
 	if (ImGui::Button("Create Password Instance"))
 	{
-		AppData.ShowPPI_CreatePasswordInstance = true;
+		AppData.ShowPPI_CreatePasswordInstance = !AppData.ShowPPI_CreatePasswordInstance;
 	}
 
 	if (ImGui::Button("Change Password Instance"))
 	{
-		AppData.ShowPPI_ChangePasswordInstance = true;
+		AppData.ShowPPI_ChangePasswordInstance = !AppData.ShowPPI_ChangePasswordInstance;
 	}
 
 	if (ImGui::Button("List All Password Instance"))
 	{
-		AppData.ShowPPI_ListAllPasswordInstance = true;
+		AppData.ShowPPI_ListAllPasswordInstance = !AppData.ShowPPI_ListAllPasswordInstance;
 	}
 
 	if (ImGui::Button("Delete Password Instance By ID"))
@@ -484,8 +526,9 @@ inline void ShowGUI_PPI_CreatePasswordInstance(std::vector<char>& BufferLoginPas
 			AppData.ShowPPI_DecryptionAlgorithms.clear();
 		}
 
-		ImGui::End();
+		
 	}
+	ImGui::End();
 }
 
 inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
@@ -1041,5 +1084,300 @@ inline void ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(std::vector<ch
 			AppData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword = false;
 		}
 		ImGui::EndPopup();
+	}
+}
+
+/* ShowGUI PersonalFileInfo Part */
+
+// 文件选择对话框函数
+std::filesystem::path OpenFileDialog(const char* dialogTitle)
+{
+	std::filesystem::path selectedPath;
+
+	if (ImGui::Button(dialogTitle))
+	{
+		ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", dialogTitle, nullptr);
+	}
+
+	if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey"))
+	{
+		if (ImGuiFileDialog::Instance()->IsOk())
+		{
+			std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+			selectedPath = filePathName;
+		}
+		ImGuiFileDialog::Instance()->Close();
+	}
+
+	return selectedPath;
+}
+
+std::filesystem::path SaveFileDialog(const char* dialogTitle)
+{
+	std::filesystem::path selectedPath;
+
+	if (ImGui::Button(dialogTitle))
+	{
+		ImGuiFileDialog::Instance()->OpenDialog("SaveFileDlgKey", dialogTitle, nullptr);
+	}
+
+	if (ImGuiFileDialog::Instance()->Display("SaveFileDlgKey"))
+	{
+		if (ImGuiFileDialog::Instance()->IsOk())
+		{
+			std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+			selectedPath = filePathName;
+		}
+		ImGuiFileDialog::Instance()->Close();
+	}
+
+	return selectedPath;
+}
+
+// 显示 PersonalFileInfo 的 GUI
+inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
+{
+	ImGui::Begin("Personal File Info");
+
+	if (ImGui::Button("Create File Instance"))
+	{
+		AppData.ShowPFI_CreateFileInstance = true;
+	}
+
+	if (ImGui::Button("Delete File Instance By ID"))
+	{
+		AppData.ShowPFI_DeleteFileInstance = true;
+	}
+
+	if (ImGui::Button("Encrypt File"))
+	{
+		AppData.ShowPFI_EncryptFile = true;
+	}
+
+	if (ImGui::Button("Decrypt File"))
+	{
+		AppData.ShowPFI_DecryptFile = true;
+	}
+
+	if (ImGui::Button("Delete All File Instances"))
+	{
+		AppData.ShowPFI_ConfirmDeleteAllFileInstances = true;
+	}
+
+	if (ImGui::Button("List All File Instances"))
+	{
+		// 这里可以添加列出所有文件实例的功能
+		// 例如，弹出一个新窗口显示所有文件实例
+	}
+
+	if (ImGui::Button("Back"))
+	{
+		AppData.ShowGUI_PersonalPasswordInfo = false;
+		// 清除文件相关的 GUI 状态
+		AppData.ShowPFI_CreateFileInstance = false;
+		AppData.ShowPFI_DeleteFileInstance = false;
+		AppData.ShowPFI_EncryptFile = false;
+		AppData.ShowPFI_DecryptFile = false;
+		AppData.ShowPFI_ConfirmDeleteAllFileInstances = false;
+	}
+
+	ImGui::End();
+
+	// 创建文件实例弹窗
+	if (AppData.ShowPFI_CreateFileInstance)
+	{
+		if (ImGui::Begin("Create File Instance", &AppData.ShowPFI_CreateFileInstance, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::InputScalar("File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
+
+			ImGui::Checkbox("Need AES", &AppData.ShowPFI_NeedAES);
+			ImGui::Checkbox("Need RC6", &AppData.ShowPFI_NeedRC6);
+			ImGui::Checkbox("Need SM4", &AppData.ShowPFI_NeedSM4);
+			ImGui::Checkbox("Need Twofish", &AppData.ShowPFI_NeedTwofish);
+			ImGui::Checkbox("Need Serpent", &AppData.ShowPFI_NeedSerpent);
+
+			if (ImGui::Button("Create File Instance"))
+			{
+				// 选择加密算法
+				AppData.ShowPFI_EncryptionAlgorithms.clear();
+				if (AppData.ShowPFI_NeedAES)
+					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
+				if (AppData.ShowPFI_NeedRC6)
+					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
+				if (AppData.ShowPFI_NeedSM4)
+					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
+				if (AppData.ShowPFI_NeedTwofish)
+					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
+				if (AppData.ShowPFI_NeedSerpent)
+					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
+
+				// 生成解密算法名称（反向顺序）
+				std::reverse_copy(AppData.ShowPFI_DecryptionAlgorithms.begin(), AppData.ShowPFI_DecryptionAlgorithms.end(), AppData.ShowPFI_DecryptionAlgorithms.begin());
+
+				// 创建文件实例
+				auto FileInstance = AppData.PersonalFileInfo.CreateFileInstance(
+					MakeTokenString(AppData.UserKey.RandomUUID, AppData.ShowPPI_Password),
+					AppData.ShowPFI_EncryptionAlgorithms,
+					AppData.ShowPFI_DecryptionAlgorithms
+				);
+
+				AppData.PersonalFileInfo.AppendFileInstance(FileInstance);
+				AppData.PersonalFileInfo.Serialization(AppData.PersonalFileInfoFilePath);
+
+				AppData.ShowPFI_CreateFileInstance = false;
+
+				// 清除 GUI 状态数据
+				AppData.ShowPFI_EncryptionAlgorithms.clear();
+				AppData.ShowPFI_DecryptionAlgorithms.clear();
+			}
+
+			if (ImGui::Button("Cancel"))
+			{
+				AppData.ShowPFI_CreateFileInstance = false;
+
+				// 清除 GUI 状态数据
+				AppData.ShowPFI_EncryptionAlgorithms.clear();
+				AppData.ShowPFI_DecryptionAlgorithms.clear();
+			}
+
+			ImGui::End();
+		}
+	}
+
+	// 删除文件实例弹窗
+	if (AppData.ShowPFI_DeleteFileInstance)
+	{
+		if (ImGui::Begin("Delete File Instance", &AppData.ShowPFI_DeleteFileInstance, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::InputScalar("File Instance ID to Delete", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
+
+			if (ImGui::Button("Delete"))
+			{
+				if (AppData.PersonalFileInfo.RemoveFileInstance(AppData.ShowPFI_SelectedFileInstanceID))
+				{
+					AppData.PersonalFileInfo.Serialization(AppData.PersonalFileInfoFilePath);
+				}
+
+				AppData.ShowPFI_DeleteFileInstance = false;
+			}
+
+			if (ImGui::Button("Cancel"))
+			{
+				AppData.ShowPFI_DeleteFileInstance = false;
+			}
+
+			ImGui::End();
+		}
+	}
+
+	// 加密文件弹窗
+	if (AppData.ShowPFI_EncryptFile)
+	{
+		if (ImGui::Begin("Encrypt File", &AppData.ShowPFI_EncryptFile, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			// 选择文件实例
+			ImGui::InputScalar("Select File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
+
+			// 选择源文件
+			std::filesystem::path SourceFilePath = OpenFileDialog("Select File to Encrypt");
+			// 选择保存路径
+			std::filesystem::path EncryptedFilePath = SaveFileDialog("Save Encrypted File");
+
+			if (!SourceFilePath.empty() && !EncryptedFilePath.empty())
+			{
+				// 查找对应的文件实例
+				auto& FileInstance = AppData.PersonalFileInfo.GetFileInstanceByID(AppData.ShowPFI_SelectedFileInstanceID);
+
+				bool success = AppData.PersonalFileInfo.EncryptFile(
+					MakeTokenString(AppData.UserKey.RandomUUID, AppData.ShowPPI_Password),
+					FileInstance,
+					SourceFilePath,
+					EncryptedFilePath
+				);
+
+				if (success)
+				{
+					ImGui::Text("File encrypted successfully.");
+				}
+				else
+				{
+					ImGui::Text("File encryption failed.");
+				}
+			}
+
+			if (ImGui::Button("Close"))
+			{
+				AppData.ShowPFI_EncryptFile = false;
+			}
+
+			ImGui::End();
+		}
+	}
+
+	// 解密文件弹窗
+	if (AppData.ShowPFI_DecryptFile)
+	{
+		if (ImGui::Begin("Decrypt File", &AppData.ShowPFI_DecryptFile, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			// 选择文件实例
+			ImGui::InputScalar("Select File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
+
+			// 选择加密文件
+			std::filesystem::path EncryptedFilePath = OpenFileDialog("Select Encrypted File to Decrypt");
+			// 选择保存路径
+			std::filesystem::path DecryptedFilePath = SaveFileDialog("Save Decrypted File");
+
+			if (!EncryptedFilePath.empty() && !DecryptedFilePath.empty())
+			{
+				// 查找对应的文件实例
+				auto& FileInstance = AppData.PersonalFileInfo.GetFileInstanceByID(AppData.ShowPFI_SelectedFileInstanceID);
+
+				bool success = AppData.PersonalFileInfo.DecryptFile(
+					MakeTokenString(AppData.UserKey.RandomUUID, AppData.ShowPPI_Password),
+					FileInstance,
+					EncryptedFilePath,
+					DecryptedFilePath
+				);
+
+				if (success)
+				{
+					ImGui::Text("File decrypted successfully.");
+				}
+				else
+				{
+					ImGui::Text("File decryption failed.");
+				}
+			}
+
+			if (ImGui::Button("Close"))
+			{
+				AppData.ShowPFI_DecryptFile = false;
+			}
+
+			ImGui::End();
+		}
+	}
+
+	// 确认删除所有文件实例弹窗
+	if (AppData.ShowPFI_ConfirmDeleteAllFileInstances)
+	{
+		if (ImGui::BeginPopupModal("Confirm Delete All File Instances", &AppData.ShowPFI_ConfirmDeleteAllFileInstances, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::Text("Are you sure you want to delete all file instances?");
+
+			if (ImGui::Button("Delete All"))
+			{
+				AppData.PersonalFileInfo.RemoveAllFileInstances();
+				AppData.PersonalFileInfo.Serialization(AppData.PersonalFileInfoFilePath);
+				AppData.ShowPFI_ConfirmDeleteAllFileInstances = false;
+			}
+
+			if (ImGui::Button("Cancel"))
+			{
+				AppData.ShowPFI_ConfirmDeleteAllFileInstances = false;
+			}
+
+			ImGui::EndPopup();
+		}
 	}
 }
