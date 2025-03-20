@@ -9,23 +9,23 @@ struct ApplicationData
 
 	/* About PersonalPasswordInfo GUI Data */
 
-	bool ShowPPI_CreatePasswordInstance;
+	bool ShowPPI_CreatePasswordInstance = false;
 
-	bool ShowPPI_ChangePasswordInstance;
-	bool ShowPPI_ChangePasswordInstanceSuccessful;
-	bool ShowPPI_ChangePasswordInstanceFailed;
+	bool ShowPPI_ChangePasswordInstance = false;
+	bool ShowPPI_ChangePasswordInstanceSuccessful = false;
+	bool ShowPPI_ChangePasswordInstanceFailed = false;
 
-	bool ShowPPI_ListAllPasswordInstance;
-	bool ShowPPI_ListAllPasswordInstanceData;
+	bool ShowPPI_ListAllPasswordInstance = false;
+	bool ShowPPI_ListAllPasswordInstanceData = false;
 
-	bool ShowPPI_DeletePasswordInstance;
-	bool ShowPPI_ConfirmDeleteAllPasswordInstance;
-	bool ShowPPI_FindPasswordInstanceByID;
-	bool ShowPPI_FindPasswordInstanceByDescription;
-	bool ShowPPI_ChangeInstanceMasterKeyWithSystemPassword;
-	bool ShowPPI_SystemPasswordChangeSuccessful;
-	bool ShowPPI_SystemPasswordNotChange;
-	bool ShowPPI_SystemPasswordChangeFailed;
+	bool ShowPPI_DeletePasswordInstance = false;
+	bool ShowPPI_ConfirmDeleteAllPasswordInstance = false;
+	bool ShowPPI_FindPasswordInstanceByID = false;
+	bool ShowPPI_FindPasswordInstanceByDescription = false;
+	bool ShowPPI_ChangeInstanceMasterKeyWithSystemPassword = false;
+	bool ShowPPI_SystemPasswordChangeSuccessful = false;
+	bool ShowPPI_SystemPasswordNotChange = false;
+	bool ShowPPI_SystemPasswordChangeFailed = false;
 
 	bool ShowPPI_NeedAES = false;
 	bool ShowPPI_NeedRC6 = false;
@@ -428,6 +428,7 @@ inline void ShowGUI_PersonalPasswordInfo(std::vector<char>& BufferLoginPassword,
 		AppData.ShowPPI_ConfirmDeleteAllPasswordInstance = false;
 		AppData.ShowPPI_FindPasswordInstanceByID = false;
 		AppData.ShowPPI_FindPasswordInstanceByDescription = false;
+		AppData.ShowGUI_PersonalFileInfo = false;
 	}
 
 	ImGui::End();
@@ -505,9 +506,10 @@ inline void ShowGUI_PPI_CreatePasswordInstance(std::vector<char>& BufferLoginPas
 				AppData.PersonalPasswordInfo.AppendPasswordInstance(PasswordInstance);
 
 				AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
+
+				//AppData.ShowPPI_CreatePasswordInstance = false;
 			}
 
-			AppData.ShowPPI_CreatePasswordInstance = false;
 
 			//Clear Application GUI State Data
 			AppData.ShowPPI_NewPassword = std::string(2048, 0x00);
@@ -665,7 +667,7 @@ inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPas
 		if (ImGui::Button("OK"))
 		{
 			ImGui::CloseCurrentPopup();
-			AppData.ShowPPI_ChangePasswordInstance = false;
+			//AppData.ShowPPI_ChangePasswordInstance = false;
 			AppData.ShowPPI_ChangePasswordInstanceSuccessful = false;
 			
 		}
@@ -680,7 +682,7 @@ inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPas
 		if (ImGui::Button("OK"))
 		{
 			ImGui::CloseCurrentPopup();
-			AppData.ShowPPI_ChangePasswordInstance = false;
+			//AppData.ShowPPI_ChangePasswordInstance = false;
 			AppData.ShowPPI_ChangePasswordInstanceFailed = false;
 			
 		}
@@ -690,10 +692,16 @@ inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPas
 
 inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
+    static bool isPasswordInfoLoaded = false;
 	if (ImGui::Begin("List All Password Instance"))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+		ImGui::BeginDisabled(isPasswordInfoLoaded);
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+		}
+		ImGui::EndDisabled();
+
 		ImGui::Checkbox("List All", &AppData.ShowPPI_ListAllPasswordInstanceData);
 
 		if (ImGui::Button("Hide"))
@@ -718,14 +726,19 @@ inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPa
 
 			if (!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() && VaildPassword)
 			{
-				AppData.PersonalPasswordInfo.Deserialization(AppData.PersonalPasswordInfoFilePath);
+				//todo: 检查反序列化是否成功
+				if (!isPasswordInfoLoaded)
+				{
+					AppData.PersonalPasswordInfo.Deserialization(AppData.PersonalPasswordInfoFilePath);
 
-				// 调用ListAllPasswordInstance函数来执行列出密码实例的操作
-				AppData.PersonalPasswordInfo.ListAllPasswordInstance
-				(
-					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword)
-				);
 
+					// 调用ListAllPasswordInstance函数来执行列出密码实例的操作
+					AppData.PersonalPasswordInfo.ListAllPasswordInstance
+					(
+						MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword)
+					);
+				}
+				isPasswordInfoLoaded = true;
 				auto& PassswordInstances = AppData.PersonalPasswordInfo.GetPassswordInstances();
 
 				// 循环遍历每个PersonalPasswordInstance并在UI中显示
@@ -767,10 +780,12 @@ inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPa
 					instance.DecryptedPassword.clear();
 				}
 			}
+
+			isPasswordInfoLoaded = false;
 		}
 
-		ImGui::End();
 	}
+	ImGui::End();
 }
 
 inline void ShowGUI_PPI_DeletePasswordInstance(ApplicationData& AppData)
@@ -826,14 +841,27 @@ inline void ShowGUI_PPI_DeleteAllPasswordInstance(ApplicationData& AppData)
 
 inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
-	if(AppData.ShowPPI_FindPasswordInstanceByID)
+	static bool isPasswordInfoLoaded = false;
+	static std::string buffer;
+	if (AppData.ShowPPI_FindPasswordInstanceByID) 
+	{
 		ImGui::OpenPopup("List Password Instance By ID");
+	}
+	else
+	{
+		isPasswordInfoLoaded = false;
+		buffer.clear();
+	}
 
 	if (ImGui::BeginPopupModal("List Password Instance By ID", &AppData.ShowPPI_FindPasswordInstanceByID, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
-		ImGui::InputScalar("Password Instance ID", ImGuiDataType_U64, &AppData.ShowPPI_SelectedPasswordInstanceID);
+		ImGui::BeginDisabled(isPasswordInfoLoaded);
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+			ImGui::InputScalar("Password Instance ID", ImGuiDataType_U64, &AppData.ShowPPI_SelectedPasswordInstanceID);
+		}
+		ImGui::EndDisabled();
 
 		if (ImGui::Button("Hide"))
 		{
@@ -844,32 +872,37 @@ inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginP
 
 		if(AppData.ShowPPI_FindPasswordInstanceByID && VaildPassword)
 		{
-			auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByID
-			(
-				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-				AppData.ShowPPI_SelectedPasswordInstanceID
-			);
-
-			if (Optional.has_value())
+			if (!isPasswordInfoLoaded) 
 			{
-				auto& Instance = Optional.value();
-
-				ImGui::Text("ID: %llu", Instance.ID);
-				ImGui::Text("New Description %s", Instance.Description.data());
-				ImGui::Text("Decrypted Password: %s", Instance.DecryptedPassword.data());
-
-				// 显示其他信息，如EncryptionAlgorithmNames和DecryptionAlgorithmNames
-				ImGui::Text("Encryption Algorithms:");
-				for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
+				auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByID
+				(
+					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+					AppData.ShowPPI_SelectedPasswordInstanceID
+				);
+				if (Optional.has_value()) 
 				{
-					ImGui::Text("- %s", algorithm.data());
+					isPasswordInfoLoaded = true;
+					auto& Instance = Optional.value();
+					std::ostringstream oss;
+					oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n",Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
+					oss << "Encryption Algorithms:\n";
+					for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
+					{
+						oss << std::format("- {}\n", algorithm.data());
+					}
+					oss << "Decryption Algorithms:\n";
+					for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
+					{
+						oss << std::format("- {}\n", algorithm.data());
+					}
+					buffer = oss.str();
+					isPasswordInfoLoaded = true;
 				}
+			}
 
-				ImGui::Text("Decryption Algorithms:");
-				for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
-				{
-					ImGui::Text("- %s", algorithm.data());
-				}
+			if (!buffer.empty())
+			{
+				ImGui::TextUnformatted(buffer.c_str());
 			}
 		}
 
@@ -879,16 +912,29 @@ inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginP
 
 inline void ShowGUI_PPI_FindPasswordInstanceByDescription(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
-	if(AppData.ShowPPI_FindPasswordInstanceByDescription)
+	static bool isPasswordInfoLoaded = false;
+	static std::string buffer;
+	if (AppData.ShowPPI_FindPasswordInstanceByDescription)
+	{
 		ImGui::OpenPopup("List Password Instance By Description");
+	}
+	else
+	{
+		isPasswordInfoLoaded = false;
+		buffer.clear();
+	}
 
 	if (ImGui::BeginPopupModal("List Password Instance By Description", &AppData.ShowPPI_FindPasswordInstanceByDescription, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
-		
-		AppData.ShowPPI_SelectedPasswordInstanceDescription.resize(2048, 0x00);
-		ImGui::InputTextMultiline("Password Instance Description", AppData.ShowPPI_SelectedPasswordInstanceDescription.data(), AppData.ShowPPI_SelectedPasswordInstanceDescription.size(), ImVec2(400, 400), ImGuiInputTextFlags_CtrlEnterForNewLine);
+		ImGui::BeginDisabled(isPasswordInfoLoaded);
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+
+			AppData.ShowPPI_SelectedPasswordInstanceDescription.resize(2048, 0x00);
+			ImGui::InputTextMultiline("Password Instance Description", AppData.ShowPPI_SelectedPasswordInstanceDescription.data(), AppData.ShowPPI_SelectedPasswordInstanceDescription.size(), ImVec2(400, 400), ImGuiInputTextFlags_CtrlEnterForNewLine);
+		}
+		ImGui::EndDisabled();
 
 		if (ImGui::Button("Hide"))
 		{
@@ -899,43 +945,49 @@ inline void ShowGUI_PPI_FindPasswordInstanceByDescription(std::vector<char>& Buf
 
 		if (AppData.ShowPPI_FindPasswordInstanceByDescription && VaildPassword)
 		{
-			auto new_end = std::find_if
-			(
-				AppData.ShowPPI_SelectedPasswordInstanceDescription.rbegin(), AppData.ShowPPI_SelectedPasswordInstanceDescription.rend(), 
-				[](char character)
-				{
-					return character != '\x00';
-				}
-			);
-
-			AppData.ShowPPI_SelectedPasswordInstanceDescription.erase(new_end.base(), AppData.ShowPPI_SelectedPasswordInstanceDescription.end());
-
-			auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByDescription
-			(
-				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-				AppData.ShowPPI_SelectedPasswordInstanceDescription
-			);
-
-			if (Optional.has_value())
+			if (!isPasswordInfoLoaded)
 			{
-				auto& Instance = Optional.value();
-					
-				ImGui::Text("ID: %llu", Instance.ID);
-				ImGui::Text("New Description %s", Instance.Description.data());
-				ImGui::Text("Decrypted Password: %s", Instance.DecryptedPassword.data());
+				auto new_end = std::find_if
+				(
+					AppData.ShowPPI_SelectedPasswordInstanceDescription.rbegin(), AppData.ShowPPI_SelectedPasswordInstanceDescription.rend(),
+					[](char character)
+					{
+						return character != '\x00';
+					}
+				);
 
-				// 显示其他信息，如EncryptionAlgorithmNames和DecryptionAlgorithmNames
-				ImGui::Text("Encryption Algorithms:");
-				for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
-				{
-					ImGui::Text("- %s", algorithm.data());
-				}
+				AppData.ShowPPI_SelectedPasswordInstanceDescription.erase(new_end.base(), AppData.ShowPPI_SelectedPasswordInstanceDescription.end());
 
-				ImGui::Text("Decryption Algorithms:");
-				for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
+				auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByDescription
+				(
+					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+					AppData.ShowPPI_SelectedPasswordInstanceDescription
+				);
+
+				if (Optional.has_value())
 				{
-					ImGui::Text("- %s", algorithm.data());
+					isPasswordInfoLoaded = true;
+					auto& Instance = Optional.value();
+					std::ostringstream oss;
+					oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
+					oss << "Encryption Algorithms:\n";
+					for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
+					{
+						oss << std::format("- {}\n", algorithm.data());
+					}
+					oss << "Decryption Algorithms:\n";
+					for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
+					{
+						oss << std::format("- {}\n", algorithm.data());
+					}
+					buffer = oss.str();
+					isPasswordInfoLoaded = true;
 				}
+			}
+
+			if (!buffer.empty())
+			{
+				ImGui::TextUnformatted(buffer.c_str());
 			}
 		}
 
@@ -1172,7 +1224,7 @@ inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
 
 	if (ImGui::Button("Back"))
 	{
-		AppData.ShowGUI_PersonalPasswordInfo = false;
+		//AppData.ShowGUI_PersonalPasswordInfo = false;
 		// 清除文件相关的 GUI 状态
 		AppData.ShowPFI_CreateFileInstance = false;
 		AppData.ShowPFI_DeleteFileInstance = false;
@@ -1240,8 +1292,8 @@ inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
 				AppData.ShowPFI_DecryptionAlgorithms.clear();
 			}
 
-			ImGui::End();
 		}
+		ImGui::End();
 	}
 
 	// 删除文件实例弹窗
@@ -1266,8 +1318,8 @@ inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
 				AppData.ShowPFI_DeleteFileInstance = false;
 			}
 
-			ImGui::End();
 		}
+		ImGui::End();
 	}
 
 	// 加密文件弹窗
@@ -1310,8 +1362,8 @@ inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
 				AppData.ShowPFI_EncryptFile = false;
 			}
 
-			ImGui::End();
 		}
+		ImGui::End();
 	}
 
 	// 解密文件弹窗
@@ -1354,8 +1406,8 @@ inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
 				AppData.ShowPFI_DecryptFile = false;
 			}
 
-			ImGui::End();
 		}
+		ImGui::End();
 	}
 
 	// 确认删除所有文件实例弹窗
