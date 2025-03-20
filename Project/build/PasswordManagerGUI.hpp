@@ -696,7 +696,12 @@ inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPa
 	if (ImGui::Begin("List All Password Instance"))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+		ImGui::BeginDisabled(isPasswordInfoLoaded);
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+		}
+		ImGui::EndDisabled();
+
 		ImGui::Checkbox("List All", &AppData.ShowPPI_ListAllPasswordInstanceData);
 
 		if (ImGui::Button("Hide"))
@@ -851,8 +856,12 @@ inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginP
 	if (ImGui::BeginPopupModal("List Password Instance By ID", &AppData.ShowPPI_FindPasswordInstanceByID, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
-		ImGui::InputScalar("Password Instance ID", ImGuiDataType_U64, &AppData.ShowPPI_SelectedPasswordInstanceID);
+		ImGui::BeginDisabled(isPasswordInfoLoaded);
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+			ImGui::InputScalar("Password Instance ID", ImGuiDataType_U64, &AppData.ShowPPI_SelectedPasswordInstanceID);
+		}
+		ImGui::EndDisabled();
 
 		if (ImGui::Button("Hide"))
 		{
@@ -918,10 +927,14 @@ inline void ShowGUI_PPI_FindPasswordInstanceByDescription(std::vector<char>& Buf
 	if (ImGui::BeginPopupModal("List Password Instance By Description", &AppData.ShowPPI_FindPasswordInstanceByDescription, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
-		
-		AppData.ShowPPI_SelectedPasswordInstanceDescription.resize(2048, 0x00);
-		ImGui::InputTextMultiline("Password Instance Description", AppData.ShowPPI_SelectedPasswordInstanceDescription.data(), AppData.ShowPPI_SelectedPasswordInstanceDescription.size(), ImVec2(400, 400), ImGuiInputTextFlags_CtrlEnterForNewLine);
+		ImGui::BeginDisabled(isPasswordInfoLoaded);
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+
+			AppData.ShowPPI_SelectedPasswordInstanceDescription.resize(2048, 0x00);
+			ImGui::InputTextMultiline("Password Instance Description", AppData.ShowPPI_SelectedPasswordInstanceDescription.data(), AppData.ShowPPI_SelectedPasswordInstanceDescription.size(), ImVec2(400, 400), ImGuiInputTextFlags_CtrlEnterForNewLine);
+		}
+		ImGui::EndDisabled();
 
 		if (ImGui::Button("Hide"))
 		{
