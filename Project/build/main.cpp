@@ -71,8 +71,8 @@ int main(int, char**)
 	glfwSwapInterval(1); // Enable vsync
 
 	static const char* default_imgui_ini = (
-		#include "imgui_rawstring.txt"
-	);
+#include "imgui_rawstring.txt"
+		);
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
@@ -171,13 +171,13 @@ int main(int, char**)
 
 		ApplicationUserLogin(BufferLoginUsername, BufferLoginPassword, ShowInvalidCurrentUUIDFilePopup, ShowUsernameAuthenticationFailedPopup, ShowPasswordAuthenticationFailedPopup, ShowLoadUserFailedPopup);
 
-		if(CurrentApplicationData.ShowGUI_PersonalPasswordInfo)
+		if (CurrentApplicationData.ShowGUI_PersonalPasswordInfo)
 			ShowGUI_PersonalPasswordInfo(BufferLoginPassword, CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_CreatePasswordInstance)
+		if (CurrentApplicationData.ShowPPI_CreatePasswordInstance)
 			ShowGUI_PPI_CreatePasswordInstance(BufferLoginPassword, CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_ChangePasswordInstance)
+		if (CurrentApplicationData.ShowPPI_ChangePasswordInstance)
 			ShowGUI_PPI_ChangePasswordInstance(BufferLoginPassword, CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_ListAllPasswordInstance)
+		if (CurrentApplicationData.ShowPPI_ListAllPasswordInstance)
 			ShowGUI_PPI_ListAllPasswordInstance(BufferLoginPassword, CurrentApplicationData);
 
 		if (CurrentApplicationData.ShowPPI_DeletePasswordInstance)
@@ -188,10 +188,26 @@ int main(int, char**)
 		if (CurrentApplicationData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword)
 			ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, CurrentApplicationData);
 
+		//fake progressbar
+		static float progress = 0.0f;
+		if (CurrentApplicationData.TaskInProgress)
+		{
+			ImGui::Begin("Progress", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse);
+			progress += 0.005f;
+			if (progress > 1.0f) progress = 0.0f;
+			ImGui::ProgressBar(progress, ImVec2(120.0f, 18.0f));
+			ImGui::Text("Task in progress...");
+			ImGui::End();
+		}
+		else
+		{
+			progress = 0.0f;
+		}
+
 		ShowGUI_PPI_FindPasswordInstanceByID(BufferLoginPassword, CurrentApplicationData);
 		ShowGUI_PPI_FindPasswordInstanceByDescription(BufferLoginPassword, CurrentApplicationData);
 
-		if(CurrentApplicationData.ShowGUI_PersonalFileInfo)
+		if (CurrentApplicationData.ShowGUI_PersonalFileInfo)
 		{
 			ShowGUI_PersonalFileInfo(CurrentApplicationData);
 		}
