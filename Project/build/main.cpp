@@ -71,8 +71,8 @@ int main(int, char**)
 	glfwSwapInterval(1); // Enable vsync
 
 	static const char* default_imgui_ini = (
-#include "imgui_rawstring.txt"
-		);
+		#include "imgui_rawstring.txt"
+	);
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
@@ -189,19 +189,18 @@ int main(int, char**)
 			ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, CurrentApplicationData);
 
 		//fake progressbar
-		static float progress = 0.0f;
 		if (CurrentApplicationData.TaskInProgress)
 		{
 			ImGui::Begin("Progress", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse);
-			progress += 0.005f;
-			if (progress > 1.0f) progress = 0.0f;
-			ImGui::ProgressBar(progress, ImVec2(120.0f, 18.0f));
+			CurrentApplicationData.progress += 0.005f;
+			if (CurrentApplicationData.progress > 1.0f) CurrentApplicationData.progress = 0.0f;
+			ImGui::ProgressBar(CurrentApplicationData.progress, ImVec2(120.0f, 18.0f));
 			ImGui::Text("Task in progress...");
 			ImGui::End();
 		}
 		else
 		{
-			progress = 0.0f;
+			CurrentApplicationData.progress = 0.0f;
 		}
 
 		ShowGUI_PPI_FindPasswordInstanceByID(BufferLoginPassword, CurrentApplicationData);
