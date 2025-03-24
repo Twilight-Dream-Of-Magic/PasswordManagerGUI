@@ -92,12 +92,11 @@ void PersonalPasswordInfo::Serialization(const std::filesystem::path& FilePath)
 	{
 		file << PersonalPasswordInfo_JSON.dump(4);
 		file.close();
-		//std::cout << "Serialization completed to " << FilePath << std::endl;
+		LogInfoHelper("Serialization completed to {0}", FilePath.string());
 	}
 	else
 	{
-		std::cerr << "Error: Failed to open the file for writing." << std::endl;
-		std::cerr << FilePath.string() << std::endl;
+		LogErrorHelper("Failed to open the file for writing. FilePath: {0}", FilePath.string());
 	}
 }
 
@@ -107,8 +106,7 @@ void PersonalPasswordInfo::Deserialization(const std::filesystem::path& FilePath
 	std::ifstream file(FilePath.c_str());
 	if (!file.is_open())
 	{
-		std::cerr << "Error: Failed to open the file for reading." << std::endl;
-		std::cerr << FilePath.string() << std::endl;
+		LogErrorHelper("Failed to open the file for reading. FilePath: {0}", FilePath.string());
 		return;
 	}
 
@@ -154,11 +152,11 @@ void PersonalPasswordInfo::Deserialization(const std::filesystem::path& FilePath
 			}
 		}
 
-		//std::cout << "Deserialization completed from " << FilePath << std::endl;
+		LogInfoHelper("Deserialization completed from {0}", FilePath.string());
 	}
 	else
 	{
-		std::cerr << "Error: JSON data is not in the expected format." << std::endl;
+		LogErrorHelper("JSON data is not in the expected format.");
 	}
 }
 
@@ -200,7 +198,7 @@ void PersonalPasswordInfo::RecomputeEncryptedPassword(const std::string& NewInst
 	// Check if the calculated hash matches the stored instance key hash.
 	if(HAP_ObjectArgument.outputHashedHexadecimalString != InstanceKeyHash)
 	{
-		std::cerr << "UUID generation of the master key gives unexpectedly different results, check if the algorithm used is correct or if the algorithm is deterministic!" << std::endl;
+		LogDebugHelper("UUID generation of the master key gives unexpectedly different results, check if the algorithm used is correct or if the algorithm is deterministic!");
 		throw std::logic_error("");
 	}
 
@@ -277,7 +275,7 @@ void PersonalPasswordInfo::RecomputeDecryptedPassword(const std::string& Token, 
 	// Check if the calculated hash matches the stored instance key hash.
 	if(HAP_ObjectArgument.outputHashedHexadecimalString != InstanceKeyHash)
 	{
-		std::cerr << "UUID generation of the master key gives unexpectedly different results, check if the algorithm used is correct or if the algorithm is deterministic!" << std::endl;
+		LogDebugHelper("UUID generation of the master key gives unexpectedly different results, check if the algorithm used is correct or if the algorithm is deterministic!");
 		throw std::logic_error("");
 	}
 
@@ -493,6 +491,8 @@ std::string PersonalPasswordInfo::FindPasswordInstanceDescriptionByID(std::uint6
 	{
 		return (*it).Description;
 	}
+
+	return "";
 }
 
 std::optional<PersonalPasswordInfo::PersonalPasswordInstance> PersonalPasswordInfo::FindPasswordInstanceByDescription(const std::string& Token, const std::string& Description)
@@ -630,11 +630,11 @@ void PersonalFileInfo::Serialization(const std::filesystem::path& FilePath)
 	{
 		file << PersonalFileInfo_JSON.dump(4);
 		file.close();
-		// std::cout << "PersonalFileInfo Serialization completed to " << FilePath << std::endl;
+		LogInfoHelper("PersonalFileInfo Serialization completed to {0}", FilePath.string());
 	}
 	else
 	{
-		std::cerr << "Error: Failed to open the file for writing: " << FilePath << std::endl;
+		LogErrorHelper("Error: Failed to open the file for writing: {0}", FilePath.string());
 	}
 }
 
@@ -645,7 +645,7 @@ void PersonalFileInfo::Deserialization(const std::filesystem::path& FilePath)
 	std::ifstream file(FilePath);
 	if (!file.is_open())
 	{
-		std::cerr << "Error: Failed to open the file for reading: " << FilePath << std::endl;
+		LogErrorHelper("Failed to open the file for reading: {0}", FilePath.string());
 		return;
 	}
 
@@ -657,11 +657,11 @@ void PersonalFileInfo::Deserialization(const std::filesystem::path& FilePath)
 	if (PersonalFileInfo_JSON.is_object())
 	{
 		DeserializeInstances(PersonalFileInfo_JSON);
-		// std::cout << "PersonalFileInfo Deserialization completed from " << FilePath << std::endl;
+		LogInfoHelper("PersonalFileInfo Deserialization completed from {0}", FilePath.string());
 	}
 	else
 	{
-		std::cerr << "Error: JSON data is not in the expected format for PersonalFileInfo." << std::endl;
+		LogErrorHelper("JSON data is not in the expected format for PersonalFileInfo.");
 	}
 }
 
@@ -731,7 +731,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	// 检查源文件是否存在
 	if (!std::filesystem::exists(SourceFilePath))
 	{
-		std::cerr << "Error: Source file does not exist: " << SourceFilePath << std::endl;
+		LogErrorHelper("Error: Source file does not exist: {0}", SourceFilePath.string());
 		return false;
 	}
 
@@ -739,7 +739,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	std::ifstream inputFile(SourceFilePath, std::ios::binary);
 	if (!inputFile.is_open())
 	{
-		std::cerr << "Error: Failed to open source file for reading: " << SourceFilePath << std::endl;
+		LogErrorHelper("Failed to open source file for reading: {0}", SourceFilePath.string());
 		return false;
 	}
 
@@ -751,14 +751,14 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	std::optional<std::string> optionalSourceHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(fileData));
 	if (!optionalSourceHash.has_value())
 	{
-		std::cerr << "Error: Failed to compute source file hash." << std::endl;
+		LogFatalHelper("Failed to compute source file hash.");
 		return false;
 	}
 	std::string sourceHashHex = optionalSourceHash.value();
 	std::vector<uint8_t> sourceHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(sourceHashHex);
 	if (sourceHashBytes.size() != 64) // SHA-512 是 64 字节
 	{
-		std::cerr << "Error: Invalid source hash size." << std::endl;
+		LogFatalHelper("Invalid source hash size.");
 		return false;
 	}
 
@@ -801,7 +801,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 		}
 		else
 		{
-			std::cerr << "Error: Unsupported encryption algorithm: " << Algorithm << std::endl;
+			LogErrorHelper("Unsupported encryption algorithm: {0}", Algorithm);
 			return false;
 		}
 	}
@@ -810,14 +810,14 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	std::optional<std::string> optionalEncryptedHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(fileData));
 	if (!optionalEncryptedHash.has_value())
 	{
-		std::cerr << "Error: Failed to compute encrypted data hash." << std::endl;
+		LogFatalHelper("Failed to compute encrypted data hash.");
 		return false;
 	}
 	std::string encryptedHashHex = optionalEncryptedHash.value();
 	std::vector<uint8_t> encryptedHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(encryptedHashHex);
 	if (encryptedHashBytes.size() != 64) // SHA-512 是 64 字节
 	{
-		std::cerr << "Error: Invalid encrypted data hash size." << std::endl;
+		LogFatalHelper("Invalid encrypted data hash size.");
 		return false;
 	}
 
@@ -825,7 +825,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	std::ofstream outputFile(EncryptedFilePath, std::ios::binary | std::ios::trunc);
 	if (!outputFile.is_open())
 	{
-		std::cerr << "Error: Failed to open encrypted file for writing: " << EncryptedFilePath << std::endl;
+		LogErrorHelper("Failed to open encrypted file for writing: {0}", EncryptedFilePath.string());
 		return false;
 	}
 
@@ -844,7 +844,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	memory_set_no_optimize_function<0x00>(MasterKey.data(), MasterKey.size() * sizeof(uint8_t));
 	memory_set_no_optimize_function<0x00>(EncryptionKey.data(), EncryptionKey.size() * sizeof(uint8_t));
 
-	std::cout << "File encrypted successfully: " << EncryptedFilePath << std::endl;
+	LogInfoHelper("File encrypted successfully: {0}", EncryptedFilePath.string());
 	return true;
 }
 
@@ -853,7 +853,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	// 检查加密文件是否存在
 	if (!std::filesystem::exists(EncryptedFilePath))
 	{
-		std::cerr << "Error: Encrypted file does not exist: " << EncryptedFilePath << std::endl;
+		LogErrorHelper("Encrypted file does not exist: {0}", EncryptedFilePath.string());
 		return false;
 	}
 
@@ -861,7 +861,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	std::ifstream inputFile(EncryptedFilePath, std::ios::binary);
 	if (!inputFile.is_open())
 	{
-		std::cerr << "Error: Failed to open encrypted file for reading: " << EncryptedFilePath << std::endl;
+		LogErrorHelper("Failed to open encrypted file for reading: {0}", EncryptedFilePath.string());
 		return false;
 	}
 
@@ -872,7 +872,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 
 	if (fileSize < 128) // 至少包含两个 SHA-512 哈希（64 * 2 = 128 字节）
 	{
-		std::cerr << "Error: Encrypted file is too small to contain necessary hashes." << std::endl;
+		LogErrorHelper("Encrypted file is too small to contain necessary hashes.");
 		inputFile.close();
 		return false;
 	}
@@ -897,21 +897,21 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	std::optional<std::string> optionalComputedEncryptedHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(encryptedData));
 	if (!optionalComputedEncryptedHash.has_value())
 	{
-		std::cerr << "Error: Failed to compute encrypted data hash." << std::endl;
+		LogFatalHelper("Failed to compute encrypted data hash.");
 		return false;
 	}
 	std::string computedEncryptedHashHex = optionalComputedEncryptedHash.value();
 	std::vector<uint8_t> computedEncryptedHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(computedEncryptedHashHex);
 	if (computedEncryptedHashBytes.size() != 64)
 	{
-		std::cerr << "Error: Invalid computed encrypted data hash size." << std::endl;
+		LogFatalHelper("Invalid computed encrypted data hash size.");
 		return false;
 	}
 
 	// 比对加密数据哈希
 	if (computedEncryptedHashBytes != encryptedHashBytes)
 	{
-		std::cerr << "Error: Encrypted data hash mismatch. The file may be corrupted or tampered with." << std::endl;
+		LogErrorHelper("Encrypted data hash mismatch. The file may be corrupted or tampered with.");
 		return false;
 	}
 
@@ -955,7 +955,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 		}
 		else
 		{
-			std::cerr << "Error: Unsupported decryption algorithm: " << Algorithm << std::endl;
+			LogErrorHelper("Unsupported decryption algorithm: {0}", Algorithm);
 			return false;
 		}
 	}
@@ -964,21 +964,21 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	std::optional<std::string> optionalDecryptedHash = MainHasher.GenerateHashed(CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512, UtilTools::DataFormating::ASCII_Hexadecmial::bytesToHexString(encryptedData));
 	if (!optionalDecryptedHash.has_value())
 	{
-		std::cerr << "Error: Failed to compute decrypted data hash." << std::endl;
+		LogFatalHelper("Failed to compute decrypted data hash.");
 		return false;
 	}
 	std::string decryptedHashHex = optionalDecryptedHash.value();
 	std::vector<uint8_t> decryptedHashBytes = UtilTools::DataFormating::ASCII_Hexadecmial::hexStringToBytes(decryptedHashHex);
 	if (decryptedHashBytes.size() != 64)
 	{
-		std::cerr << "Error: Invalid decrypted data hash size." << std::endl;
+		LogFatalHelper("Invalid decrypted data hash size.");
 		return false;
 	}
 
 	// 比对解密后数据的哈希
 	if (decryptedHashBytes != sourceHashBytes)
 	{
-		std::cerr << "Error: Decrypted data hash mismatch. Decryption failed or data is corrupted." << std::endl;
+		LogErrorHelper("Decrypted data hash mismatch. Decryption failed or data is corrupted.");
 		return false;
 	}
 
@@ -986,7 +986,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	std::ofstream outputFile(DecryptedFilePath, std::ios::binary | std::ios::trunc);
 	if (!outputFile.is_open())
 	{
-		std::cerr << "Error: Failed to open decrypted file for writing: " << DecryptedFilePath << std::endl;
+		LogErrorHelper("Failed to open decrypted file for writing: {0}", DecryptedFilePath.string());
 		return false;
 	}
 
@@ -997,7 +997,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	memory_set_no_optimize_function<0x00>(MasterKey.data(), MasterKey.size() * sizeof(uint8_t));
 	memory_set_no_optimize_function<0x00>(DecryptionKey.data(), DecryptionKey.size() * sizeof(uint8_t));
 
-	std::cout << "File decrypted successfully: " << DecryptedFilePath << std::endl;
+	LogInfoHelper("File decrypted successfully: {0}", DecryptedFilePath.string());
 	return true;
 }
 
@@ -1245,7 +1245,7 @@ inline std::string GenerateStringFileUUIDFromStringUUID(const std::string& UUID)
 		}
 	}
 
-	std::cout << "File UUID: " << UniqueFileName << std::endl;
+	LogDebugHelper("File UUID: {0}", UniqueFileName);
 
 	return UniqueFileName;
 }
@@ -1266,7 +1266,7 @@ inline void SavePasswordManagerUser(const std::pair<PasswordManagerUserKey, Pass
 	}
 	catch (const nlohmann::json::exception& e)
 	{
-		std::cerr << "Error loading existing user all data json: " << e.what() << std::endl;
+		LogErrorHelper("Loading existing user all data json: {0}", e.what());
 		return;
 	}
 
@@ -1367,14 +1367,14 @@ inline bool LoadPasswordManagerUUID(PasswordManagerUserKey& CurrentUserKey)
 		}
 		else
 		{
-			std::cerr << "Error loading file all_userdata.json" << std::endl;
+			LogErrorHelper("Loading file all_userdata.json");
 		}
 
 		return true;
 	}
 	else
 	{
-		std::cerr << "Error loading file current_uuid.json" << std::endl;
+		LogErrorHelper("Loading file current_uuid.json");
 	}
 
 	return false;
@@ -1396,7 +1396,7 @@ inline void LoadPasswordManagerUser(const PasswordManagerUserKey& CurrentUserKey
 	}
 	catch (const nlohmann::json::exception& e)
 	{
-		std::cerr << "Error loading existing all user data: " << e.what() << std::endl;
+		LogErrorHelper("Loading existing user all data json: {0}", e.what());
 		return;
 	}
 
@@ -1478,7 +1478,7 @@ inline bool VerifyUUID(const std::vector<char>& Username, const std::string& Ran
 	}
 	else
 	{
-		std::cerr << "Error loading existing all user data" << std::endl;
+		LogErrorHelper("Loading existing all user data");
 	}
 
 	CommonSecurity::DataHashingWrapper::HashersAssistantParameters HAP_ObjectArgument;
@@ -1501,12 +1501,11 @@ inline bool VerifyUUID(const std::vector<char>& Username, const std::string& Ran
 
 	if(CurrentUUID["UUID"] != UUID)
 	{
-		std::cout << "UUID Authentication has failed." << std::endl;
-
+		LogDebugHelper("UUID Authentication has failed.");
 		return false;
 	}
 
-	std::cout << "UUID Authentication has successful!" << std::endl;
+	LogDebugHelper("UUID Authentication has successful!");
 
 	return true;
 }
@@ -1608,7 +1607,7 @@ inline void MakePersonalPasswordDataFile(const std::string& UniqueFileName, cons
 		// 如果目录不存在，创建它
 		if (!std::filesystem::create_directory(directoryPath))
 		{
-			std::cerr << "Error: Failed to create directory." << std::endl;
+			LogFatalHelper("Failed to create directory.");
 			return;
 		}
 	}
@@ -1619,7 +1618,7 @@ inline void MakePersonalPasswordDataFile(const std::string& UniqueFileName, cons
 	if (std::filesystem::exists(filePath))
 	{
 		// 如果文件已存在，可以选择覆盖或执行其他操作
-		std::cerr << "Error: File already exists." << std::endl;
+		LogErrorHelper("File already exists.");
 		return;
 	}
 		
@@ -1629,7 +1628,7 @@ inline void MakePersonalPasswordDataFile(const std::string& UniqueFileName, cons
 
 	PersonalPasswordInfo.Serialization(filePath);
 
-	std::cout << "Personal password data file created: " << filePath << std::endl;
+	LogInfoHelper("Personal password data file created: {0}", filePath.string());
 }
 
 inline void FirstLoginLogic(const std::vector<char>& BufferLoginPassword, const PasswordManagerUserKey& CurrentUserKey, PasswordManagerUserData& CurrentUserData)

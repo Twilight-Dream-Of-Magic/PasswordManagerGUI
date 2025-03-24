@@ -7,6 +7,9 @@
 /* Priority Level 1 */
 #include "Support+Library/Support-Library.hpp"
 
+#include "raii_tool.hpp"
+#include "logger.hpp"
+
 // System User data structure
 struct PasswordManagerUserData
 {

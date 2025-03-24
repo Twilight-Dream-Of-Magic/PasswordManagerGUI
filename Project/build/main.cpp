@@ -171,13 +171,13 @@ int main(int, char**)
 
 		ApplicationUserLogin(BufferLoginUsername, BufferLoginPassword, ShowInvalidCurrentUUIDFilePopup, ShowUsernameAuthenticationFailedPopup, ShowPasswordAuthenticationFailedPopup, ShowLoadUserFailedPopup);
 
-		if(CurrentApplicationData.ShowGUI_PersonalPasswordInfo)
+		if (CurrentApplicationData.ShowGUI_PersonalPasswordInfo)
 			ShowGUI_PersonalPasswordInfo(BufferLoginPassword, CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_CreatePasswordInstance)
+		if (CurrentApplicationData.ShowPPI_CreatePasswordInstance)
 			ShowGUI_PPI_CreatePasswordInstance(BufferLoginPassword, CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_ChangePasswordInstance)
+		if (CurrentApplicationData.ShowPPI_ChangePasswordInstance)
 			ShowGUI_PPI_ChangePasswordInstance(BufferLoginPassword, CurrentApplicationData);
-		if(CurrentApplicationData.ShowPPI_ListAllPasswordInstance)
+		if (CurrentApplicationData.ShowPPI_ListAllPasswordInstance)
 			ShowGUI_PPI_ListAllPasswordInstance(BufferLoginPassword, CurrentApplicationData);
 
 		if (CurrentApplicationData.ShowPPI_DeletePasswordInstance)
@@ -188,10 +188,26 @@ int main(int, char**)
 		if (CurrentApplicationData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword)
 			ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, CurrentApplicationData);
 
+		//fake progressbar
+		if (CurrentApplicationData.TaskInProgress)
+		{
+			ImGui::Begin("Progress", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse);
+			//CurrentApplicationData.progress += 0.005f;
+			if (CurrentApplicationData.progress > 1.0f)
+				CurrentApplicationData.progress = 0.0f;
+			ImGui::ProgressBar(CurrentApplicationData.progress, ImVec2(120.0f, 18.0f));
+			ImGui::Text("Task in progress...");
+			ImGui::End();
+		}
+		else
+		{
+			CurrentApplicationData.progress = 0.0f;
+		}
+
 		ShowGUI_PPI_FindPasswordInstanceByID(BufferLoginPassword, CurrentApplicationData);
 		ShowGUI_PPI_FindPasswordInstanceByDescription(BufferLoginPassword, CurrentApplicationData);
 
-		if(CurrentApplicationData.ShowGUI_PersonalFileInfo)
+		if (CurrentApplicationData.ShowGUI_PersonalFileInfo)
 		{
 			ShowGUI_PersonalFileInfo(CurrentApplicationData);
 		}

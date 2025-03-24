@@ -72,10 +72,52 @@ struct ApplicationData
 
 	PersonalFileInfo PersonalFileInfo;
 	std::filesystem::path PersonalFileInfoFilePath;
+
+	/* Atomic flag indicating if any background task is currently running */
+	std::atomic_bool TaskInProgress = false;
+
+	bool IsPasswordInfoValid = false;
+	float progress = 0.0f;
 };
 
 //global object
 ApplicationData CurrentApplicationData;
+
+template<typename F, typename... Args> requires	std::invocable<F, Args...>
+void AsyncTask(std::atomic_bool& busy_flag, F task, Args&&... args)
+{
+	bool expected = false;
+
+	if (!busy_flag.compare_exchange_strong(expected, true))
+	{
+		LogWarnHelper("Task {} is already running, skipping...", typeid(task).name());
+		return;
+	}
+
+	ScopeGuard<std::atomic_bool, void(std::atomic_bool&)> SG
+	(
+		busy_flag, [](std::atomic_bool& flag)
+		{
+			flag.store(false);
+		}
+	);
+
+	// todo: 更好的函数log信息	
+	LogNoticeHelper("Task {} is running...", typeid(task).name());
+	try
+	{
+		task(std::forward<Args>(args)...);
+	}
+	catch (const std::exception& e)
+	{
+		LogErrorHelper("Error in {}: {}", typeid(task).name(),e.what());
+	}
+	catch (...)
+	{
+		LogErrorHelper("Unknown exception in {}", typeid(task).name());
+	}
+};
+
 
 //ImGUI Custom Application Function In Loop
 
@@ -220,8 +262,8 @@ inline void ApplicationUserLogin
 		{
 			if (CurrentUserKey.RandomSalt.empty() && CurrentUserKey.RandomPasswordSalt.empty() && CurrentUserKey.RegistrationTime == 0)
 			{
-				std::cout << "Login failed because the UUID of the contents of the 'current_uuid.json' file is invalid!" << std::endl;
-
+				//std::cout << "Login failed because the UUID of the contents of the 'current_uuid.json' file is invalid!" << std::endl;
+				LogWarnHelper("Login failed because the UUID of the contents of the 'current_uuid.json' file is invalid!");
 				ShowInvalidCurrentUUIDFilePopup = true;
 
 				goto LoginButtonDone;
@@ -237,7 +279,8 @@ inline void ApplicationUserLogin
 			if (VaildUsername && VaildPassword)
 			{
 				// Login successful
-				std::cout << "Login successful!" << std::endl;
+				//std::cout << "Login successful!" << std::endl;
+				LogNoticeHelper("Login successful!");
 
 				if (CurrentUserData.IsFirstLogin)
 				{
@@ -273,14 +316,15 @@ inline void ApplicationUserLogin
 			{
 				if (VaildUsername == false && VaildPassword == true)
 				{
-					std::cout << "Failed to login, incorrect username by UUID checking" << std::endl;
-
+					//std::cout << "Failed to login, incorrect username by UUID checking" << std::endl;
+					LogWarnHelper("Failed to login, incorrect username by UUID checking");
 					// Username validation failed
 					ShowUsernameAuthenticationFailedPopup = true;
 				}
 				else if (VaildUsername == true && VaildPassword == false)
 				{
-					std::cout << "Failed to login, incorrect password by security comparison" << std::endl;
+					//std::cout << "Failed to login, incorrect password by security comparison" << std::endl;
+					LogWarnHelper("Failed to login, incorrect password by security comparison");
 
 					// Password validation failed
 					ShowPasswordAuthenticationFailedPopup = true;
@@ -359,6 +403,501 @@ inline void ApplicationUserLogin
 	}
 }
 
+
+
+/* Functions for Managing Personal Password Information */
+inline void Do_LogoutPersonalPasswordInfo(std::vector<char>& BufferLoginPassword, ApplicationData& AppData) 
+{
+	//Close This GUI
+	CurrentApplicationData.ShowGUI_PersonalPasswordInfo = false;
+
+	//Clear Application GUI State Data
+	CurrentApplicationData.UserKey = PasswordManagerUserKey();
+	CurrentApplicationData.UserData = PasswordManagerUserData();
+	CurrentApplicationData.PersonalPasswordInfo = PersonalPasswordInfo();
+	CurrentApplicationData.PersonalPasswordInfoFilePath = "";
+
+	//Zero Bytes SystemPassword - Secure Wipe
+	memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
+
+	//Close This All Sub GUI
+	AppData.ShowPPI_CreatePasswordInstance = false;
+	AppData.ShowPPI_ChangePasswordInstance = false;
+	AppData.ShowPPI_ListAllPasswordInstance = false;
+	AppData.ShowPPI_ListAllPasswordInstanceData = false;
+	AppData.ShowPPI_DeletePasswordInstance = false;
+	AppData.ShowPPI_ConfirmDeleteAllPasswordInstance = false;
+	AppData.ShowPPI_FindPasswordInstanceByID = false;
+	AppData.ShowPPI_FindPasswordInstanceByDescription = false;
+	AppData.ShowGUI_PersonalFileInfo = false;
+	AppData.IsPasswordInfoValid = false;
+}
+
+inline void Do_CreatePasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
+{
+	static const auto task_create_and_encrypt_password = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		//Select Algorithms
+		if (AppData.ShowPPI_NeedAES)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
+		}
+		if (AppData.ShowPPI_NeedRC6)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
+		}
+		if (AppData.ShowPPI_NeedSM4)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
+		}
+		if (AppData.ShowPPI_NeedTwofish)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
+		}
+		if (AppData.ShowPPI_NeedSerpent)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
+		}
+
+		CurrentApplicationData.progress = 0.2f;
+
+		AppData.ShowPPI_DecryptionAlgorithms.resize(AppData.ShowPPI_EncryptionAlgorithms.size(), "");
+		std::reverse_copy(AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(), AppData.ShowPPI_DecryptionAlgorithms.begin());
+
+		CurrentApplicationData.progress = 0.4f;
+
+		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+
+		if
+		(
+			!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
+			!AppData.ShowPPI_NewPassword.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
+			!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
+		)
+		{
+			auto new_end = std::find_if
+			(
+				AppData.ShowPPI_NewPassword.rbegin(), AppData.ShowPPI_NewPassword.rend(),
+				[](char character)
+				{
+					return character != '\x00';
+				}
+			);
+
+			AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
+
+			CurrentApplicationData.progress = 0.6f;
+
+			// 调用CreatePasswordInstance函数来执行创建密码实例的操作
+			auto PasswordInstance = AppData.PersonalPasswordInfo.CreatePasswordInstance
+			(
+				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+				AppData.ShowPPI_Description, AppData.ShowPPI_NewPassword,
+				AppData.ShowPPI_EncryptionAlgorithms,
+				AppData.ShowPPI_DecryptionAlgorithms
+			);
+			AppData.PersonalPasswordInfo.AppendPasswordInstance(PasswordInstance);
+
+			CurrentApplicationData.progress = 0.8f;
+
+			AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
+
+			//AppData.ShowPPI_CreatePasswordInstance = false;
+			AppData.IsPasswordInfoValid = false;
+		}
+
+		CurrentApplicationData.progress = 1.0f;
+
+		//Clear Application GUI State Data
+		AppData.ShowPPI_NewPassword = std::string(2048, 0x00);
+		AppData.ShowPPI_Description = std::string(2048, 0x00);
+		AppData.ShowPPI_EncryptionAlgorithms.clear();
+		AppData.ShowPPI_DecryptionAlgorithms.clear();
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AsyncTask(AppData.TaskInProgress, task_create_and_encrypt_password, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
+	}
+}
+
+inline void Do_ChangePasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
+{
+	static const auto task_change_pwd_ins = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		if (AppData.ShowPPI_ChangeEncryptedPassword)
+		{
+			if (AppData.ShowPPI_NeedAES)
+			{
+				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
+			}
+			if (AppData.ShowPPI_NeedRC6)
+			{
+				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
+			}
+			if (AppData.ShowPPI_NeedSM4)
+			{
+				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
+			}
+			if (AppData.ShowPPI_NeedTwofish)
+			{
+				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
+			}
+			if (AppData.ShowPPI_NeedSerpent)
+			{
+				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
+			}
+
+			AppData.ShowPPI_DecryptionAlgorithms.resize(AppData.ShowPPI_EncryptionAlgorithms.size(), "");
+			std::reverse_copy(AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(), AppData.ShowPPI_DecryptionAlgorithms.begin());
+		}
+
+		CurrentApplicationData.progress = 0.2f;
+
+		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+
+		if
+		(
+			!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
+			!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
+			!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
+		)
+		{
+			CurrentApplicationData.progress = 0.4f;
+
+			auto new_end = std::find_if
+			(
+				AppData.ShowPPI_Password.rbegin(), AppData.ShowPPI_Password.rend(),
+				[](char character)
+				{
+					return character != '\x00';
+				}
+			);
+
+			AppData.ShowPPI_Password.erase(new_end.base(), AppData.ShowPPI_Password.end());
+
+			new_end = std::find_if
+			(
+				AppData.ShowPPI_Description.rbegin(), AppData.ShowPPI_Description.rend(),
+				[](char character)
+				{
+					return character != '\x00';
+				}
+			);
+
+			AppData.ShowPPI_Description.erase(new_end.base(), AppData.ShowPPI_Description.end());
+
+			CurrentApplicationData.progress = 0.6f;
+
+			// 调用ChangePasswordInstance函数来执行更改密码实例的操作
+			bool IsChanged = AppData.PersonalPasswordInfo.ChangePasswordInstance
+			(
+				AppData.ShowPPI_SelectedPasswordInstanceID, AppData.ShowPPI_Description, AppData.ShowPPI_Password,
+				AppData.ShowPPI_EncryptionAlgorithms, AppData.ShowPPI_DecryptionAlgorithms,
+				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword), AppData.ShowPPI_ChangeEncryptedPassword
+			);
+
+			CurrentApplicationData.progress = 0.8f;
+
+			if (IsChanged)
+			{
+				// 更改成功的处理逻辑
+				AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
+				AppData.IsPasswordInfoValid = false;
+				AppData.ShowPPI_ChangePasswordInstanceSuccessful = true;
+
+				//Clear Application GUI State Data
+				AppData.ShowPPI_Password = std::string(2048, 0x00);
+				AppData.ShowPPI_Description = std::string(2048, 0x00);
+				AppData.ShowPPI_EncryptionAlgorithms.clear();
+				AppData.ShowPPI_DecryptionAlgorithms.clear();
+			}
+			else
+			{
+				// 更改失败的处理逻辑
+
+				AppData.ShowPPI_ChangePasswordInstanceFailed = true;
+
+				//Clear Application GUI State Data
+				AppData.ShowPPI_Password = std::string(2048, 0x00);
+				AppData.ShowPPI_Description = std::string(2048, 0x00);
+				AppData.ShowPPI_EncryptionAlgorithms.clear();
+				AppData.ShowPPI_DecryptionAlgorithms.clear();
+			}
+
+			CurrentApplicationData.progress = 1.0f;
+		}
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AsyncTask(AppData.TaskInProgress, task_change_pwd_ins, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
+	}
+}
+
+inline void Do_DecryptionAllPasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
+{
+	static const auto task_list_all_pwd_ins = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AppData.PersonalPasswordInfo.Deserialization(AppData.PersonalPasswordInfoFilePath);
+
+		CurrentApplicationData.progress = 0.5f;
+
+		// 调用ListAllPasswordInstance函数来执行列出密码实例的操作
+		AppData.PersonalPasswordInfo.ListAllPasswordInstance
+		(
+			MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword)
+		);
+
+		CurrentApplicationData.progress = 1.0f;
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AsyncTask(AppData.TaskInProgress, task_list_all_pwd_ins, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
+	}
+}
+
+inline void Do_FindPasswordInstanceByID(std::vector<char>& BufferLoginPassword, ApplicationData& AppData, std::string& buffer)
+{
+	static const auto task_find_pwd_ins_by_id = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByID
+		(
+			MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+			AppData.ShowPPI_SelectedPasswordInstanceID
+		);
+
+		CurrentApplicationData.progress = 0.2f;
+
+		if (Optional.has_value())
+		{
+			auto& Instance = Optional.value();
+			std::ostringstream oss;
+			oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
+			
+			CurrentApplicationData.progress = 0.4f;
+
+			oss << "Encryption Algorithms:\n";
+			for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
+			{
+				oss << std::format("- {}\n", algorithm.data());
+			}
+
+			CurrentApplicationData.progress = 0.6f;
+
+			oss << "Decryption Algorithms:\n";
+			for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
+			{
+				oss << std::format("- {}\n", algorithm.data());
+			}
+			buffer = oss.str();
+
+			CurrentApplicationData.progress = 0.8f;
+		}
+		else
+		{
+			buffer = "No suitable ID found.";
+		}
+
+		CurrentApplicationData.progress = 1.0f;
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		AsyncTask(AppData.TaskInProgress, task_find_pwd_ins_by_id, std::ref(AppData), std::cref(BufferLoginPassword),std::ref(buffer));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer)).detach();
+	}
+}
+
+inline void Do_FindPasswordInstanceByDescription(std::vector<char>& BufferLoginPassword, ApplicationData& AppData, std::string& buffer)
+{
+	static const auto task_find_pwd_ins_by_desc = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		auto new_end = std::find_if
+		(
+			AppData.ShowPPI_SelectedPasswordInstanceDescription.rbegin(), AppData.ShowPPI_SelectedPasswordInstanceDescription.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		AppData.ShowPPI_SelectedPasswordInstanceDescription.erase(new_end.base(), AppData.ShowPPI_SelectedPasswordInstanceDescription.end());
+
+		auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByDescription
+		(
+			MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+			AppData.ShowPPI_SelectedPasswordInstanceDescription
+		);
+
+		if (Optional.has_value())
+		{
+			auto& Instance = Optional.value();
+			std::ostringstream oss;
+			oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
+			oss << "Encryption Algorithms:\n";
+			for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
+			{
+				oss << std::format("- {}\n", algorithm.data());
+			}
+			oss << "Decryption Algorithms:\n";
+			for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
+			{
+				oss << std::format("- {}\n", algorithm.data());
+			}
+			buffer = oss.str();
+		}
+		else
+		{
+			buffer = "No suitable Description found.";
+		}
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		AsyncTask(AppData.TaskInProgress, task_find_pwd_ins_by_desc, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer)).detach();
+	}
+}
+
+inline void Do_ChangeInstanceMasterKeyWithSystemPassword(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
+{
+	static const auto task_change_ins_mst_key_wth_sys_pwd = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		auto new_end = std::find_if
+		(
+			AppData.ShowPPI_Password.rbegin(), AppData.ShowPPI_Password.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		AppData.ShowPPI_Password.erase(new_end.base(), AppData.ShowPPI_Password.end());
+
+		new_end = std::find_if
+		(
+			AppData.ShowPPI_NewPassword.rbegin(), AppData.ShowPPI_NewPassword.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
+
+		CurrentApplicationData.progress = 0.2f;
+
+		std::string Password(BufferLoginPassword.begin(), BufferLoginPassword.end());
+
+		new_end = std::find_if
+		(
+			Password.rbegin(), Password.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		Password.erase(new_end.base(), Password.end());
+
+		CurrentApplicationData.progress = 0.4f;
+
+		ScopeGuard <ApplicationData> SG
+		(
+			AppData, [](ApplicationData& AppData)
+			{
+				AppData.ShowPPI_Password = std::string(2048, 0x00);
+				AppData.ShowPPI_NewPassword = std::string(2048, 0x00);
+			}
+		);
+
+		if (!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_NewPassword.empty())
+		{
+			// Verify Password
+			const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData) && std::equal(AppData.ShowPPI_Password.begin(), AppData.ShowPPI_Password.end(), Password.begin(), Password.end());
+
+			const bool IsNotChangePassword = std::equal(AppData.ShowPPI_NewPassword.begin(), AppData.ShowPPI_NewPassword.end(), Password.begin(), Password.end());
+
+			CurrentApplicationData.progress = 0.6f;
+
+			if (IsNotChangePassword)
+			{
+				// 密码未更改的提示框
+				AppData.ShowPPI_SystemPasswordNotChange = true;
+				return;
+			}
+
+			if (VaildPassword)
+			{
+				LoadPasswordManagerUser(AppData.UserKey, AppData.UserData);
+
+				CurrentApplicationData.progress = 0.7f;
+
+				AppData.PersonalPasswordInfo.ChangeInstanceMasterKeyWithSystemPassword
+				(
+					AppData.PersonalPasswordInfoFilePath,
+					AppData.UserKey.RandomUUID + AppData.ShowPPI_Password,
+					AppData.UserKey.RandomUUID + AppData.ShowPPI_NewPassword
+				);
+
+				CurrentApplicationData.progress = 0.8f;
+
+				AppData.UserData.HashedPassword = PasswordAndHash(AppData.ShowPPI_NewPassword, AppData.UserKey.RandomPasswordSalt);
+
+				CurrentApplicationData.progress = 0.9f;
+
+				SavePasswordManagerUser(std::pair<PasswordManagerUserKey, PasswordManagerUserData>{AppData.UserKey, AppData.UserData});
+
+				// 更改密码成功的提示框
+				AppData.ShowPPI_SystemPasswordChangeSuccessful = true;
+			}
+			else
+			{
+				// 更改密码失败的提示框
+				AppData.ShowPPI_SystemPasswordChangeFailed = true;
+			}
+
+			CurrentApplicationData.progress = 1.0f;
+		}
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AsyncTask(AppData.TaskInProgress, task_change_ins_mst_key_wth_sys_pwd, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
+	}
+}
+/* */
+
 /* ShowGUI PersonalPasswordInfo Part */
 
 inline void ShowGUI_PersonalPasswordInfo(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
@@ -400,35 +939,14 @@ inline void ShowGUI_PersonalPasswordInfo(std::vector<char>& BufferLoginPassword,
 		AppData.ShowPPI_FindPasswordInstanceByDescription = true;
 	}
 
-	if (ImGui::Button("Change UUID(Master Key Material) With System Password"))
+	if (ImGui::Button("Change UUID(Master Key Material) With\n System Password"))
 	{
 		AppData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword = true;
 	}
 
 	if (ImGui::Button("Logout"))
 	{
-		//Close This GUI
-		CurrentApplicationData.ShowGUI_PersonalPasswordInfo = false;
-
-		//Clear Application GUI State Data
-		CurrentApplicationData.UserKey = PasswordManagerUserKey();
-		CurrentApplicationData.UserData = PasswordManagerUserData();
-		CurrentApplicationData.PersonalPasswordInfo = PersonalPasswordInfo();
-		CurrentApplicationData.PersonalPasswordInfoFilePath = "";
-
-		//Zero Bytes SystemPassword - Secure Wipe
-		memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
-		
-		//Close This All Sub GUI
-		AppData.ShowPPI_CreatePasswordInstance = false;
-		AppData.ShowPPI_ChangePasswordInstance = false;
-		AppData.ShowPPI_ListAllPasswordInstance = false;
-		AppData.ShowPPI_ListAllPasswordInstanceData = false;
-		AppData.ShowPPI_DeletePasswordInstance = false;
-		AppData.ShowPPI_ConfirmDeleteAllPasswordInstance = false;
-		AppData.ShowPPI_FindPasswordInstanceByID = false;
-		AppData.ShowPPI_FindPasswordInstanceByDescription = false;
-		AppData.ShowGUI_PersonalFileInfo = false;
+		Do_LogoutPersonalPasswordInfo(BufferLoginPassword, AppData);
 	}
 
 	ImGui::End();
@@ -450,73 +968,9 @@ inline void ShowGUI_PPI_CreatePasswordInstance(std::vector<char>& BufferLoginPas
 
 		if (ImGui::Button("Create and Encrypt Password"))
 		{
-			//Select Algorithms
-			if(AppData.ShowPPI_NeedAES)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
-			}
-			if(AppData.ShowPPI_NeedRC6)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
-			}
-			if(AppData.ShowPPI_NeedSM4)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
-			}
-			if(AppData.ShowPPI_NeedTwofish)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
-			}
-			if(AppData.ShowPPI_NeedSerpent)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
-			}
-
-			AppData.ShowPPI_DecryptionAlgorithms.resize(AppData.ShowPPI_EncryptionAlgorithms.size(), "");
-			std::reverse_copy(AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(), AppData.ShowPPI_DecryptionAlgorithms.begin());
-
-			const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
-
-			if
-			(
-				!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() && 
-				!AppData.ShowPPI_NewPassword.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
-				!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
-			)
-			{
-				auto new_end = std::find_if
-				(
-					AppData.ShowPPI_NewPassword.rbegin(), AppData.ShowPPI_NewPassword.rend(), 
-					[](char character)
-					{
-						return character != '\x00';
-					}
-				);
-
-				AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
-				
-				// 调用CreatePasswordInstance函数来执行创建密码实例的操作
-				auto PasswordInstance = AppData.PersonalPasswordInfo.CreatePasswordInstance
-				(
-					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-					AppData.ShowPPI_Description, AppData.ShowPPI_NewPassword,
-					AppData.ShowPPI_EncryptionAlgorithms,
-					AppData.ShowPPI_DecryptionAlgorithms
-				);
-				AppData.PersonalPasswordInfo.AppendPasswordInstance(PasswordInstance);
-
-				AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
-
-				//AppData.ShowPPI_CreatePasswordInstance = false;
-			}
-
-
-			//Clear Application GUI State Data
-			AppData.ShowPPI_NewPassword = std::string(2048, 0x00);
-			AppData.ShowPPI_Description = std::string(2048, 0x00);
-			AppData.ShowPPI_EncryptionAlgorithms.clear();
-			AppData.ShowPPI_DecryptionAlgorithms.clear();
+			Do_CreatePasswordInstance(BufferLoginPassword, AppData);
 		}
+
 		if (ImGui::Button("Cancel"))
 		{
 			AppData.ShowPPI_CreatePasswordInstance = false;
@@ -559,99 +1013,10 @@ inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPas
 
 	if (ImGui::Button("Change Password Instance"))
 	{
-		if(AppData.ShowPPI_ChangeEncryptedPassword)
-		{
-			if (AppData.ShowPPI_NeedAES)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
-			}
-			if (AppData.ShowPPI_NeedRC6)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
-			}
-			if (AppData.ShowPPI_NeedSM4)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
-			}
-			if (AppData.ShowPPI_NeedTwofish)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
-			}
-			if (AppData.ShowPPI_NeedSerpent)
-			{
-				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
-			}
-
-			AppData.ShowPPI_DecryptionAlgorithms.resize(AppData.ShowPPI_EncryptionAlgorithms.size(), "");
-			std::reverse_copy(AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(), AppData.ShowPPI_DecryptionAlgorithms.begin());
-		}
-
-		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
-
-		if
-		(
-			!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() && 
-			!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
-			!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
-		)
-		{
-			auto new_end = std::find_if
-			(
-				AppData.ShowPPI_Password.rbegin(), AppData.ShowPPI_Password.rend(), 
-				[](char character)
-				{
-					return character != '\x00';
-				}
-			);
-
-			AppData.ShowPPI_Password.erase(new_end.base(), AppData.ShowPPI_Password.end());
-
-			new_end = std::find_if
-			(
-				AppData.ShowPPI_Description.rbegin(), AppData.ShowPPI_Description.rend(), 
-				[](char character)
-				{
-					return character != '\x00';
-				}
-			);
-
-			AppData.ShowPPI_Description.erase(new_end.base(), AppData.ShowPPI_Description.end());
-
-			// 调用ChangePasswordInstance函数来执行更改密码实例的操作
-			bool IsChanged = AppData.PersonalPasswordInfo.ChangePasswordInstance
-			(
-				AppData.ShowPPI_SelectedPasswordInstanceID, AppData.ShowPPI_Description, AppData.ShowPPI_Password, 
-				AppData.ShowPPI_EncryptionAlgorithms, AppData.ShowPPI_DecryptionAlgorithms, 
-				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword), AppData.ShowPPI_ChangeEncryptedPassword
-			);
-
-			if (IsChanged)
-			{
-				// 更改成功的处理逻辑
-				AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
-
-				AppData.ShowPPI_ChangePasswordInstanceSuccessful = true;
-
-				//Clear Application GUI State Data
-				AppData.ShowPPI_Password = std::string(2048, 0x00);
-				AppData.ShowPPI_Description = std::string(2048, 0x00);
-				AppData.ShowPPI_EncryptionAlgorithms.clear();
-				AppData.ShowPPI_DecryptionAlgorithms.clear();
-			}
-			else
-			{
-				// 更改失败的处理逻辑
-
-				AppData.ShowPPI_ChangePasswordInstanceFailed = true;
-
-				//Clear Application GUI State Data
-				AppData.ShowPPI_Password = std::string(2048, 0x00);
-				AppData.ShowPPI_Description = std::string(2048, 0x00);
-				AppData.ShowPPI_EncryptionAlgorithms.clear();
-				AppData.ShowPPI_DecryptionAlgorithms.clear();
-			}
-		}
+		Do_ChangePasswordInstance(BufferLoginPassword, AppData);
 	}
+
+
 	if (ImGui::Button("Cancel"))
 	{
 		AppData.ShowPPI_ChangePasswordInstance = false;
@@ -661,6 +1026,7 @@ inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPas
 
 	if(AppData.ShowPPI_ChangePasswordInstanceSuccessful)
 		ImGui::OpenPopup("Password Instance Is Changed");
+
 	if (ImGui::BeginPopup("Password Instance Is Changed", ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		ImGui::Text("Password Instance Changed Successfully!");
@@ -692,15 +1058,10 @@ inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPas
 
 inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
-    static bool isPasswordInfoLoaded = false;
 	if (ImGui::Begin("List All Password Instance"))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::BeginDisabled(isPasswordInfoLoaded);
-		{
-			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
-		}
-		ImGui::EndDisabled();
+		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
 
 		ImGui::Checkbox("List All", &AppData.ShowPPI_ListAllPasswordInstanceData);
 
@@ -726,19 +1087,12 @@ inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPa
 
 			if (!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() && VaildPassword)
 			{
-				//todo: 检查反序列化是否成功
-				if (!isPasswordInfoLoaded)
+				if (!AppData.IsPasswordInfoValid)
 				{
-					AppData.PersonalPasswordInfo.Deserialization(AppData.PersonalPasswordInfoFilePath);
-
-
-					// 调用ListAllPasswordInstance函数来执行列出密码实例的操作
-					AppData.PersonalPasswordInfo.ListAllPasswordInstance
-					(
-						MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword)
-					);
+					Do_DecryptionAllPasswordInstance(BufferLoginPassword, AppData);
 				}
-				isPasswordInfoLoaded = true;
+
+				AppData.IsPasswordInfoValid = true;
 				auto& PassswordInstances = AppData.PersonalPasswordInfo.GetPassswordInstances();
 
 				// 循环遍历每个PersonalPasswordInstance并在UI中显示
@@ -781,9 +1135,13 @@ inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPa
 				}
 			}
 
-			isPasswordInfoLoaded = false;
+			AppData.IsPasswordInfoValid = false;
 		}
 
+	}
+	else 
+	{
+		AppData.ShowPPI_ListAllPasswordInstanceData = false;
 	}
 	ImGui::End();
 }
@@ -802,6 +1160,7 @@ inline void ShowGUI_PPI_DeletePasswordInstance(ApplicationData& AppData)
 			if (AppData.PersonalPasswordInfo.RemovePasswordInstance(AppData.ShowPPI_SelectedPasswordInstanceID))
 			{
 				AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
+				AppData.IsPasswordInfoValid = false;
 			}
 
 			AppData.ShowPPI_DeletePasswordInstance = false;
@@ -829,6 +1188,7 @@ inline void ShowGUI_PPI_DeleteAllPasswordInstance(ApplicationData& AppData)
 			AppData.PersonalPasswordInfo.RemoveAllPasswordInstance();
 			AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
 			AppData.ShowPPI_ConfirmDeleteAllPasswordInstance = false;
+			AppData.IsPasswordInfoValid = false;
 		}
 		if (ImGui::Button("Cancel"))
 		{
@@ -841,7 +1201,6 @@ inline void ShowGUI_PPI_DeleteAllPasswordInstance(ApplicationData& AppData)
 
 inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
-	static bool isPasswordInfoLoaded = false;
 	static std::string buffer;
 	if (AppData.ShowPPI_FindPasswordInstanceByID) 
 	{
@@ -849,61 +1208,33 @@ inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginP
 	}
 	else
 	{
-		isPasswordInfoLoaded = false;
 		buffer.clear();
 	}
 
 	if (ImGui::BeginPopupModal("List Password Instance By ID", &AppData.ShowPPI_FindPasswordInstanceByID, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::BeginDisabled(isPasswordInfoLoaded);
+		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+		ImGui::InputScalar("Password Instance ID", ImGuiDataType_U64, &AppData.ShowPPI_SelectedPasswordInstanceID);
+
+		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+
+		if (ImGui::Button("find") && AppData.ShowPPI_FindPasswordInstanceByID && VaildPassword)
 		{
-			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
-			ImGui::InputScalar("Password Instance ID", ImGuiDataType_U64, &AppData.ShowPPI_SelectedPasswordInstanceID);
+			Do_FindPasswordInstanceByID(BufferLoginPassword, AppData, buffer);
 		}
-		ImGui::EndDisabled();
+
+		ImGui::SameLine();
 
 		if (ImGui::Button("Hide"))
 		{
 			AppData.ShowPPI_FindPasswordInstanceByID = false;
+			buffer.clear();
 		}
 
-		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
-
-		if(AppData.ShowPPI_FindPasswordInstanceByID && VaildPassword)
+		if (!buffer.empty() && AppData.ShowPPI_FindPasswordInstanceByID && VaildPassword)
 		{
-			if (!isPasswordInfoLoaded) 
-			{
-				auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByID
-				(
-					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-					AppData.ShowPPI_SelectedPasswordInstanceID
-				);
-				if (Optional.has_value()) 
-				{
-					isPasswordInfoLoaded = true;
-					auto& Instance = Optional.value();
-					std::ostringstream oss;
-					oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n",Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
-					oss << "Encryption Algorithms:\n";
-					for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
-					{
-						oss << std::format("- {}\n", algorithm.data());
-					}
-					oss << "Decryption Algorithms:\n";
-					for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
-					{
-						oss << std::format("- {}\n", algorithm.data());
-					}
-					buffer = oss.str();
-					isPasswordInfoLoaded = true;
-				}
-			}
-
-			if (!buffer.empty())
-			{
-				ImGui::TextUnformatted(buffer.c_str());
-			}
+			ImGui::TextUnformatted(buffer.c_str());
 		}
 
 		ImGui::EndPopup();
@@ -912,7 +1243,6 @@ inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginP
 
 inline void ShowGUI_PPI_FindPasswordInstanceByDescription(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
-	static bool isPasswordInfoLoaded = false;
 	static std::string buffer;
 	if (AppData.ShowPPI_FindPasswordInstanceByDescription)
 	{
@@ -920,75 +1250,36 @@ inline void ShowGUI_PPI_FindPasswordInstanceByDescription(std::vector<char>& Buf
 	}
 	else
 	{
-		isPasswordInfoLoaded = false;
 		buffer.clear();
 	}
 
 	if (ImGui::BeginPopupModal("List Password Instance By Description", &AppData.ShowPPI_FindPasswordInstanceByDescription, ImGuiWindowFlags_AlwaysAutoResize))
 	{
 		BufferLoginPassword.resize(2048, 0x00);
-		ImGui::BeginDisabled(isPasswordInfoLoaded);
-		{
-			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
 
-			AppData.ShowPPI_SelectedPasswordInstanceDescription.resize(2048, 0x00);
-			ImGui::InputTextMultiline("Password Instance Description", AppData.ShowPPI_SelectedPasswordInstanceDescription.data(), AppData.ShowPPI_SelectedPasswordInstanceDescription.size(), ImVec2(400, 400), ImGuiInputTextFlags_CtrlEnterForNewLine);
-		}
-		ImGui::EndDisabled();
+		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
 
-		if (ImGui::Button("Hide"))
-		{
-			AppData.ShowPPI_FindPasswordInstanceByDescription = false;
-		}
+		AppData.ShowPPI_SelectedPasswordInstanceDescription.resize(2048, 0x00);
+		ImGui::InputTextMultiline("Password Instance\nDescription", AppData.ShowPPI_SelectedPasswordInstanceDescription.data(), AppData.ShowPPI_SelectedPasswordInstanceDescription.size(), ImVec2(400, 400), ImGuiInputTextFlags_CtrlEnterForNewLine);
 
 		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-		if (AppData.ShowPPI_FindPasswordInstanceByDescription && VaildPassword)
+		if (ImGui::Button("find") && AppData.ShowPPI_FindPasswordInstanceByDescription && VaildPassword)
 		{
-			if (!isPasswordInfoLoaded)
-			{
-				auto new_end = std::find_if
-				(
-					AppData.ShowPPI_SelectedPasswordInstanceDescription.rbegin(), AppData.ShowPPI_SelectedPasswordInstanceDescription.rend(),
-					[](char character)
-					{
-						return character != '\x00';
-					}
-				);
+			Do_FindPasswordInstanceByDescription(BufferLoginPassword, AppData, buffer);
+		}
 
-				AppData.ShowPPI_SelectedPasswordInstanceDescription.erase(new_end.base(), AppData.ShowPPI_SelectedPasswordInstanceDescription.end());
+		ImGui::SameLine();
+		
+		if (ImGui::Button("Hide"))
+		{
+			AppData.ShowPPI_FindPasswordInstanceByDescription = false;
+			buffer.clear();
+		}
 
-				auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByDescription
-				(
-					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-					AppData.ShowPPI_SelectedPasswordInstanceDescription
-				);
-
-				if (Optional.has_value())
-				{
-					isPasswordInfoLoaded = true;
-					auto& Instance = Optional.value();
-					std::ostringstream oss;
-					oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
-					oss << "Encryption Algorithms:\n";
-					for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
-					{
-						oss << std::format("- {}\n", algorithm.data());
-					}
-					oss << "Decryption Algorithms:\n";
-					for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
-					{
-						oss << std::format("- {}\n", algorithm.data());
-					}
-					buffer = oss.str();
-					isPasswordInfoLoaded = true;
-				}
-			}
-
-			if (!buffer.empty())
-			{
-				ImGui::TextUnformatted(buffer.c_str());
-			}
+		if (!buffer.empty() && AppData.ShowPPI_FindPasswordInstanceByDescription && VaildPassword)
+		{
+			ImGui::TextUnformatted(buffer.c_str());
 		}
 
 		ImGui::EndPopup();
@@ -1008,84 +1299,7 @@ inline void ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(std::vector<ch
 
 		if(ImGui::Button("Change Password"))
 		{
-			auto new_end = std::find_if
-			(
-				AppData.ShowPPI_Password.rbegin(),AppData.ShowPPI_Password.rend(), 
-				[](char character)
-				{
-					return character != '\x00';
-				}
-			);
-
-			AppData.ShowPPI_Password.erase(new_end.base(), AppData.ShowPPI_Password.end());
-
-			new_end = std::find_if
-			(
-				AppData.ShowPPI_NewPassword.rbegin(),AppData.ShowPPI_NewPassword.rend(), 
-				[](char character)
-				{
-					return character != '\x00';
-				}
-			);
-
-			AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
-
-			std::string Password(BufferLoginPassword.begin(), BufferLoginPassword.end());
-
-			new_end = std::find_if
-			(
-				Password.rbegin(), Password.rend(), 
-				[](char character)
-				{
-					return character != '\x00';
-				}
-			);
-
-			Password.erase(new_end.base(), Password.end());
-
-			if(!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_NewPassword.empty())
-			{
-				// Verify Password
-				const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData) && std::equal(AppData.ShowPPI_Password.begin(), AppData.ShowPPI_Password.end(), Password.begin(), Password.end());
-				
-				const bool IsNotChangePassword = std::equal(AppData.ShowPPI_NewPassword.begin(), AppData.ShowPPI_NewPassword.end(), Password.begin(), Password.end());
-
-				if (IsNotChangePassword)
-				{
-					// 密码未更改的提示框
-					AppData.ShowPPI_SystemPasswordNotChange = true;
-					goto Flag;
-				}
-
-				if(VaildPassword)
-				{
-					LoadPasswordManagerUser(AppData.UserKey, AppData.UserData);
-
-					AppData.PersonalPasswordInfo.ChangeInstanceMasterKeyWithSystemPassword
-					(
-						AppData.PersonalPasswordInfoFilePath,
-						AppData.UserKey.RandomUUID + AppData.ShowPPI_Password,
-						AppData.UserKey.RandomUUID + AppData.ShowPPI_NewPassword
-					);
-
-					AppData.UserData.HashedPassword = PasswordAndHash(AppData.ShowPPI_NewPassword, AppData.UserKey.RandomPasswordSalt);
-					SavePasswordManagerUser(std::pair<PasswordManagerUserKey, PasswordManagerUserData>{AppData.UserKey, AppData.UserData});
-
-					// 更改密码成功的提示框
-					AppData.ShowPPI_SystemPasswordChangeSuccessful = true;
-					goto Flag;
-				}
-				else
-				{
-					// 更改密码失败的提示框
-					AppData.ShowPPI_SystemPasswordChangeFailed = true;
-					goto Flag;
-				}
-			}
-
-			Flag:
-			AppData.ShowPPI_Password = std::string(2048, 0x00);
-			AppData.ShowPPI_NewPassword = std::string(2048, 0x00);
+			Do_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, AppData);
 		}
 
 		if (ImGui::Button("Cancel"))
