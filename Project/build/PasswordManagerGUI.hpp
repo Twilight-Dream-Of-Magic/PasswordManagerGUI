@@ -107,43 +107,83 @@ private:
 class Logger
 {
 public:
-	enum class Level : size_t
+	enum class Level : uint32_t
 	{
-		INFO = 0,
+		NORMAL	= 0,
 		WARNING = 1,
-		ERROR = 2,
-		NOTICE = 3,
-		DEBUG = 4,
-		LEN = 5
+		ERROR	= 2,
+		NOTICE	= 3,
+		DEBUG	= 4,
+		INFO	= 5,
+		LEN		= 6
+	};
+	
+	enum class Mask : uint32_t
+	{
+		SHOW_NORMAL		= 1 << 0,
+		SHOW_WARNING	= 1 << 1,
+		SHOW_ERROR		= 1 << 2,
+		SHOW_NOTICE		= 1 << 3,
+		SHOW_DEBUG		= 1 << 4,
+		SHOW_INFO		= 1 << 5,
+		SHOW_TAG		= 1 << 6,
+		SHOW_TIME		= 1 << 7,
+		SHOW_COLOR		= 1 << 8,
+		SHOW_MESSAGE	= 1 << 9,
+		NEW_LINE		= 1 << 10,
+		END_LINE		= 1 << 11,
+		LOG_TO_CONSOLE	= 1 << 12,
+		LOG_TO_FILE		= 1 << 13,
 	};
 
-	static const Logger& Instance()
+	friend auto operator|(Logger::Mask a, Logger::Mask b) -> std::underlying_type_t<Logger::Mask> {
+		return (std::underlying_type_t<Logger::Mask>(a) | std::underlying_type_t<Logger::Mask>(b));
+	}
+
+	friend auto operator&(Logger::Mask a, Logger::Mask b) -> std::underlying_type_t<Logger::Mask> {
+		return (std::underlying_type_t<Logger::Mask>(a) & std::underlying_type_t<Logger::Mask>(b));
+	}
+
+	friend auto operator^(Logger::Mask a, Logger::Mask b) -> std::underlying_type_t<Logger::Mask> {
+		return (std::underlying_type_t<Logger::Mask>(a) ^ std::underlying_type_t<Logger::Mask>(b));
+	}
+
+	friend auto operator~(Logger::Mask a) -> std::underlying_type_t<Logger::Mask> {
+		return (~std::underlying_type_t<Logger::Mask>(a));
+	}	
+
+	static Logger& Instance()
 	{
 		static Logger instance;
 		return instance;
 	}
 
-	void Log(Logger::Level level, const std::string& message) const
+	void Log(Logger::Level level, const std::string& message)
 	{
-		// 这里加锁是因为cout是逐字符线程安全的，不加锁有可能出现两句话的字符交叉打印的情况
-		// The lock is added here because cout is thread-safe on a character-by-character basis. Without the lock, there is a possibility of character crossover when printing two sentences.
-		std::lock_guard<std::mutex> lock(_mutex);
-		std::ostream& out = (level == Logger::Level::ERROR) ? std::cerr : std::cout;
-		static const auto to_idx = [](Logger::Level level)->size_t {return static_cast<size_t>(level);};
-		static const std::array<const char*, to_idx(Level::LEN)> clrs{ "\033[37m", "\033[33m", "\033[31m","\033[34m", "\033[93m"};
-		static const std::array<const char*, to_idx(Level::LEN)> tags{ "[INFO] ", "[WARNING] ", "[ERROR] ", "[NOTICE]", "[DEBUG]"};
+		static const auto to_idx = [](Logger::Level level)->size_t {return static_cast<std::underlying_type_t<Logger::Level>>(level);};
+		static const std::array<const char*, to_idx(Level::LEN)> clrs{ "\033[37m", "\033[33m", "\033[31m","\033[34m", "\033[93m", "\033[90m"};
+		static const std::array<const char*, to_idx(Level::LEN)> tags{ " ", "(WARNING) ", "(ERROR) ", "(NOTICE)", "(DEBUG)","(INFO)" };
 		static const auto clr = [](Logger::Level level) ->const char* {return clrs[to_idx(level)];};
 		static const auto tag = [](Logger::Level level) ->const char* {return tags[to_idx(level)];};
 		static const char* reset_clr = "\033[0m";
+		if (!(_mask & (1u << to_idx(level)))) return;
+		std::lock_guard<std::mutex> lock(_mutex);	// 这里加锁是因为cout只是逐字符线程安全的
+		std::stringstream ss;
+		std::ostream& out = (level == Logger::Level::ERROR) ? std::cerr : std::cout;
+		auto tmobj = GetCurrentTimeStr();
 
-		// todo: cmd color支持
-		// todo: out <<[time]:
-		// out << tag(level) << message << '\n';
-		out << clr(level) << tag(level) << message << reset_clr << '\n';
+		if (_mask & ~~Logger::Mask::SHOW_TIME) ss << tmobj;
+		if (_mask & ~~Logger::Mask::SHOW_TAG) ss << tag(level);
+		if (_mask & ~~Logger::Mask::SHOW_MESSAGE) ss << message;
+		if (_mask & ~~Logger::Mask::END_LINE)  ss << '\n';
+		if (_mask & ~~Logger::Mask::SHOW_COLOR) out << clr(level);
+		if (_mask & ~~Logger::Mask::LOG_TO_CONSOLE) out << ss.str();
+		if (_mask & ~~Logger::Mask::SHOW_COLOR) out << reset_clr;
+		if (_mask & ~~Logger::Mask::LOG_TO_FILE) LogToFile(ss.str());
 	}
 
 	template<typename... Args>
-	void Log(Logger::Level level, const std::format_string<Args...> fmt,const Args&... args) const
+	void Log(Logger::Level level, const std::format_string<Args...> fmt,const Args&... args)
 	{
 		Log(level, std::vformat(fmt.get(), std::make_format_args(args...)));
 	}
@@ -153,16 +193,121 @@ public:
 		std::cout << std::flush;
 		std::cerr << std::flush;
 	}
+
+	uint32_t SetMask(uint32_t mask)
+	{
+		std::scoped_lock lock(_mutex);
+		auto old_mask = _mask;
+		_mask = mask;
+		return old_mask;
+	}
+
+	void SetLogFile(const std::filesystem::path& filename)
+	{
+		std::scoped_lock lock(_mutex);
+		static auto mask0 = _mask;
+		auto SG = ScopeGuard<uint32_t>(_mask, [](uint32_t& mask) { mask = mask0; });
+
+		if (_fs.is_open()) {
+			_fs.close();
+		}
+		try 
+		{
+			std::filesystem::create_directories(filename.parent_path());
+			_fs.open(filename, std::ios::app);
+			_filename = filename;
+		}
+		catch (const std::exception& e) 
+		{
+			_mask = _mask & ~Logger::Mask::LOG_TO_FILE;
+			std::string error_msg = "Failed to open log file " + _filename.string() + " : " + e.what();
+			Log(Logger::Level::ERROR, error_msg);
+		}
+		catch (...)
+		{
+			_mask = _mask & ~Logger::Mask::LOG_TO_FILE;
+			std::string error_msg = "Failed to open log file "+ _filename.string() + "： Unknown exception";
+			Log(Logger::Level::ERROR, error_msg);
+		}
+	}
+
 private:
-	Logger() = default;
-	mutable std::mutex _mutex;
+	//Logger() = default;
+	Logger()
+	{
+		SetLogFile("./log.txt");
+	}
+
+	void RotateLogFile()
+	{
+		try
+		{
+			if (_fs.is_open()) _fs.close();
+
+			auto new_name = _filename.parent_path() / std::format("{}_{:%Y%m%d_%H%M%S}{}",
+				_filename.stem().string(),
+				std::chrono::system_clock::now(),
+				_filename.extension().string());
+
+			std::filesystem::rename(_filename, new_name);
+			_fs.open(_filename, std::ios::app);
+		}
+		catch (const std::exception& e)
+		{
+			_mask &= ~static_cast<uint32_t>(Mask::LOG_TO_FILE);
+			std::string error_msg = std::string("Rotate failed: ") + e.what();
+			Log(Logger::Level::ERROR, error_msg);
+		}
+	}
+
+	void LogToFile(const std::string& str)
+	{
+		static auto mask0 = _mask;
+		auto SG = ScopeGuard<uint32_t>(_mask, [](uint32_t& mask) { mask = mask0; });
+
+		if (std::filesystem::exists(_filename) && std::filesystem::file_size(_filename) >= MAX_FILE_SIZE) {
+			RotateLogFile();
+		}
+
+		try
+		{
+			_fs << str;
+			_fs.flush();
+		}
+		catch (const std::exception& e)
+		{
+			_mask = _mask & ~Logger::Mask::LOG_TO_FILE;
+			std::string error_msg = "Failed to log to file " + _filename.string() + " : " + e.what();
+			Log(Logger::Level::ERROR, error_msg);
+		}
+		catch (...)
+		{
+			_mask = _mask & ~Logger::Mask::LOG_TO_FILE;
+			std::string error_msg = "Failed to log to file " + _filename.string() + " : Unknown exception";
+			Log(Logger::Level::ERROR, error_msg);
+		}
+	}
+
+	std::string GetCurrentTimeStr() {
+		auto now = std::chrono::system_clock::now();
+		auto zt = std::chrono::zoned_time{ std::chrono::current_zone(), now };
+		return std::format("[{:%Y-%m-%d %H:%M:%S}]", zt);
+	}
+
+	static constexpr size_t MAX_FILE_SIZE = 1024*1024;
+	std::ofstream _fs;
+	std::mutex _mutex;
+	std::filesystem::path _filename;
+	uint32_t _mask = 0xFFFF;
 };
 
-#define LOG_INF(msg, ...) Logger::Instance().Log(Logger::Level::INFO, msg, ##__VA_ARGS__)
+#define LOG_(msg, ...) Logger::Instance().Log(Logger::Level::NORMAL, msg, ##__VA_ARGS__)
 #define LOG_WRN(msg, ...) Logger::Instance().Log(Logger::Level::WARNING, msg, ##__VA_ARGS__)
 #define LOG_ERR(msg, ...) Logger::Instance().Log(Logger::Level::ERROR, msg, ##__VA_ARGS__)
 #define LOG_NTC(msg, ...) Logger::Instance().Log(Logger::Level::NOTICE, msg, ##__VA_ARGS__)
 #define LOG_DBG(msg, ...) Logger::Instance().Log(Logger::Level::DEBUG, msg, ##__VA_ARGS__)
+#define LOG_INF(msg, ...) Logger::Instance().Log(Logger::Level::INFO, msg, ##__VA_ARGS__)
+
 
 
 template<typename F, typename... Args> requires	std::invocable<F, Args...>
@@ -540,14 +685,12 @@ inline void Do_CreatePasswordInstance(std::vector<char>& BufferLoginPassword, Ap
 
 		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-
-		// TIXME: 这里的检查其实是无效的，因为所有string都被初始化为了std::string(2048, 0x00)，导致空密码也能通过，进而导致程序崩溃
 		if
-			(
-				!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
-				!AppData.ShowPPI_NewPassword.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
-				!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
-				)
+		(
+			!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
+			!AppData.ShowPPI_NewPassword.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
+			!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
+		)
 		{
 			auto new_end = std::find_if
 			(
@@ -628,7 +771,6 @@ inline void Do_ChangePasswordInstance(std::vector<char>& BufferLoginPassword, Ap
 
 		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-		// FIXME: 此处的检查逻辑有问题，因为所有的string都被初始化为了std::string(2048, 0x00)，导致空密码也能通过，进而导致程序崩溃
 		if
 			(
 				!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
@@ -1037,7 +1179,6 @@ inline void ShowGUI_PPI_ChangePasswordInstance(std::vector<char>& BufferLoginPas
 
 	if (ImGui::Button("Flush Password Instance Description"))
 	{
-		// FIXME: 当删除所有密码之后，再次修改密码，会导致程序崩溃
 		AppData.ShowPPI_Description = AppData.PersonalPasswordInfo.FindPasswordInstanceDescriptionByID(AppData.ShowPPI_SelectedPasswordInstanceID);
 		AppData.ShowPPI_Description.resize(2048, 0x00);
 	}

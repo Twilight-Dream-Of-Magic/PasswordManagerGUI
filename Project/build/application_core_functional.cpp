@@ -493,6 +493,8 @@ std::string PersonalPasswordInfo::FindPasswordInstanceDescriptionByID(std::uint6
 	{
 		return (*it).Description;
 	}
+
+	return "";
 }
 
 std::optional<PersonalPasswordInfo::PersonalPasswordInstance> PersonalPasswordInfo::FindPasswordInstanceByDescription(const std::string& Token, const std::string& Description)
