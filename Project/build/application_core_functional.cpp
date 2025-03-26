@@ -92,11 +92,11 @@ void PersonalPasswordInfo::Serialization(const std::filesystem::path& FilePath)
 	{
 		file << PersonalPasswordInfo_JSON.dump(4);
 		file.close();
-		LogInfoHelper("Serialization completed to {0}", FilePath.string());
+		LogInfoHelper("Serialization completed to {0}", std::make_tuple(FilePath.string()));
 	}
 	else
 	{
-		LogErrorHelper("Failed to open the file for writing. FilePath: {0}", FilePath.string());
+		LogErrorHelper("Failed to open the file for writing. FilePath: {0}", std::make_tuple(FilePath.string()));
 	}
 }
 
@@ -106,7 +106,7 @@ void PersonalPasswordInfo::Deserialization(const std::filesystem::path& FilePath
 	std::ifstream file(FilePath.c_str());
 	if (!file.is_open())
 	{
-		LogErrorHelper("Failed to open the file for reading. FilePath: {0}", FilePath.string());
+		LogErrorHelper("Failed to open the file for reading. FilePath: {0}", std::make_tuple( FilePath.string()) );
 		return;
 	}
 
@@ -152,7 +152,7 @@ void PersonalPasswordInfo::Deserialization(const std::filesystem::path& FilePath
 			}
 		}
 
-		LogInfoHelper("Deserialization completed from {0}", FilePath.string());
+		LogInfoHelper("Deserialization completed from {0}", std::make_tuple(FilePath.string()));
 	}
 	else
 	{
@@ -630,11 +630,11 @@ void PersonalFileInfo::Serialization(const std::filesystem::path& FilePath)
 	{
 		file << PersonalFileInfo_JSON.dump(4);
 		file.close();
-		LogInfoHelper("PersonalFileInfo Serialization completed to {0}", FilePath.string());
+		LogInfoHelper("PersonalFileInfo Serialization completed to {0}", std::make_tuple(FilePath.string()));
 	}
 	else
 	{
-		LogErrorHelper("Error: Failed to open the file for writing: {0}", FilePath.string());
+		LogErrorHelper("Error: Failed to open the file for writing: {0}", std::make_tuple(FilePath.string()));
 	}
 }
 
@@ -645,7 +645,7 @@ void PersonalFileInfo::Deserialization(const std::filesystem::path& FilePath)
 	std::ifstream file(FilePath);
 	if (!file.is_open())
 	{
-		LogErrorHelper("Failed to open the file for reading: {0}", FilePath.string());
+		LogErrorHelper("Failed to open the file for reading: {0}", std::make_tuple(FilePath.string()));
 		return;
 	}
 
@@ -657,7 +657,7 @@ void PersonalFileInfo::Deserialization(const std::filesystem::path& FilePath)
 	if (PersonalFileInfo_JSON.is_object())
 	{
 		DeserializeInstances(PersonalFileInfo_JSON);
-		LogInfoHelper("PersonalFileInfo Deserialization completed from {0}", FilePath.string());
+		LogInfoHelper("PersonalFileInfo Deserialization completed from {0}", std::make_tuple(FilePath.string()));
 	}
 	else
 	{
@@ -731,7 +731,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	// 检查源文件是否存在
 	if (!std::filesystem::exists(SourceFilePath))
 	{
-		LogErrorHelper("Error: Source file does not exist: {0}", SourceFilePath.string());
+		LogErrorHelper("Error: Source file does not exist: {0}", std::make_tuple(SourceFilePath.string()));
 		return false;
 	}
 
@@ -739,7 +739,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	std::ifstream inputFile(SourceFilePath, std::ios::binary);
 	if (!inputFile.is_open())
 	{
-		LogErrorHelper("Failed to open source file for reading: {0}", SourceFilePath.string());
+		LogErrorHelper("Failed to open source file for reading: {0}", std::make_tuple(SourceFilePath.string()));
 		return false;
 	}
 
@@ -801,7 +801,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 		}
 		else
 		{
-			LogErrorHelper("Unsupported encryption algorithm: {0}", Algorithm);
+			LogErrorHelper("Unsupported encryption algorithm: {0}", std::make_tuple(Algorithm));
 			return false;
 		}
 	}
@@ -825,7 +825,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	std::ofstream outputFile(EncryptedFilePath, std::ios::binary | std::ios::trunc);
 	if (!outputFile.is_open())
 	{
-		LogErrorHelper("Failed to open encrypted file for writing: {0}", EncryptedFilePath.string());
+		LogErrorHelper("Failed to open encrypted file for writing: {0}", std::make_tuple(EncryptedFilePath.string()));
 		return false;
 	}
 
@@ -844,7 +844,7 @@ bool PersonalFileInfo::EncryptFile(const std::string& Token, const PersonalFileI
 	memory_set_no_optimize_function<0x00>(MasterKey.data(), MasterKey.size() * sizeof(uint8_t));
 	memory_set_no_optimize_function<0x00>(EncryptionKey.data(), EncryptionKey.size() * sizeof(uint8_t));
 
-	LogInfoHelper("File encrypted successfully: {0}", EncryptedFilePath.string());
+	LogInfoHelper("File encrypted successfully: {0}", std::make_tuple(EncryptedFilePath.string()));
 	return true;
 }
 
@@ -853,7 +853,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	// 检查加密文件是否存在
 	if (!std::filesystem::exists(EncryptedFilePath))
 	{
-		LogErrorHelper("Encrypted file does not exist: {0}", EncryptedFilePath.string());
+		LogErrorHelper("Encrypted file does not exist: {0}", std::make_tuple(EncryptedFilePath.string()));
 		return false;
 	}
 
@@ -861,7 +861,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	std::ifstream inputFile(EncryptedFilePath, std::ios::binary);
 	if (!inputFile.is_open())
 	{
-		LogErrorHelper("Failed to open encrypted file for reading: {0}", EncryptedFilePath.string());
+		LogErrorHelper("Failed to open encrypted file for reading: {0}", std::make_tuple(EncryptedFilePath.string()));
 		return false;
 	}
 
@@ -955,7 +955,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 		}
 		else
 		{
-			LogErrorHelper("Unsupported decryption algorithm: {0}", Algorithm);
+			LogErrorHelper("Unsupported decryption algorithm: {0}", std::make_tuple(Algorithm));
 			return false;
 		}
 	}
@@ -986,7 +986,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	std::ofstream outputFile(DecryptedFilePath, std::ios::binary | std::ios::trunc);
 	if (!outputFile.is_open())
 	{
-		LogErrorHelper("Failed to open decrypted file for writing: {0}", DecryptedFilePath.string());
+		LogErrorHelper("Failed to open decrypted file for writing: {0}", std::make_tuple(DecryptedFilePath.string()));
 		return false;
 	}
 
@@ -997,7 +997,7 @@ bool PersonalFileInfo::DecryptFile(const std::string& Token, const PersonalFileI
 	memory_set_no_optimize_function<0x00>(MasterKey.data(), MasterKey.size() * sizeof(uint8_t));
 	memory_set_no_optimize_function<0x00>(DecryptionKey.data(), DecryptionKey.size() * sizeof(uint8_t));
 
-	LogInfoHelper("File decrypted successfully: {0}", DecryptedFilePath.string());
+	LogInfoHelper("File decrypted successfully: {0}", std::make_tuple(DecryptedFilePath.string()));
 	return true;
 }
 
@@ -1121,7 +1121,7 @@ inline void RegenerateMasterKey(const std::filesystem::path& FilePath, PersonalP
 }
 
 // SHA-1 Main processing function for a 512-bit block
-void SHA1ProcessBlock(const std::vector<unsigned char>& block, std::array<uint32_t, 5>& H)
+static void SHA1ProcessBlock(const std::vector<unsigned char>& block, std::array<uint32_t, 5>& H)
 {
 	// SHA-1 Constants
 	constexpr std::array<uint32_t, 4> K
@@ -1130,14 +1130,14 @@ void SHA1ProcessBlock(const std::vector<unsigned char>& block, std::array<uint32
 	};
 
 	// Initialize message schedule
-	uint32_t W[80];
+	uint32_t W[80] = {};
 
-	for (int t = 0; t < 16; t++)
+	for (size_t t = 0; t < 16; t++)
 	{
 		W[t] = (block[t * 4] << 24) | (block[t * 4 + 1] << 16) | (block[t * 4 + 2] << 8) | block[t * 4 + 3];
 	}
 
-	for (int t = 16; t < 80; t++)
+	for (size_t t = 16; t < 80; t++)
 	{
 		W[t] = std::rotl(W[t - 3] ^ W[t - 8] ^ W[t - 14] ^ W[t - 16], 1);
 	}
@@ -1245,7 +1245,7 @@ inline std::string GenerateStringFileUUIDFromStringUUID(const std::string& UUID)
 		}
 	}
 
-	LogDebugHelper("File UUID: {0}", UniqueFileName);
+	LogDebugHelper("File UUID: {}", std::make_tuple(UniqueFileName));
 
 	return UniqueFileName;
 }
@@ -1266,7 +1266,7 @@ inline void SavePasswordManagerUser(const std::pair<PasswordManagerUserKey, Pass
 	}
 	catch (const nlohmann::json::exception& e)
 	{
-		LogErrorHelper("Loading existing user all data json: {0}", e.what());
+		LogErrorHelper("Loading existing user all data json: {0}", std::make_tuple(e.what()));
 		return;
 	}
 
@@ -1396,7 +1396,7 @@ inline void LoadPasswordManagerUser(const PasswordManagerUserKey& CurrentUserKey
 	}
 	catch (const nlohmann::json::exception& e)
 	{
-		LogErrorHelper("Loading existing user all data json: {0}", e.what());
+		LogErrorHelper("Loading existing user all data json: {0}", std::make_tuple(e.what()));
 		return;
 	}
 
@@ -1523,7 +1523,7 @@ inline bool VerifyPassword(const std::vector<char>& Password, const PasswordMana
 
 	for(size_t Index = 0; Index < HashedPassword.size(); ++Index)
 	{
-		isSame &= ~(HashedPassword[Index] ^ CurrentUserData.HashedPassword[Index]);
+		isSame &= ~static_cast<bool>(HashedPassword[Index] ^ CurrentUserData.HashedPassword[Index]);
 	}
 
 	return isSame;
@@ -1574,9 +1574,9 @@ inline std::vector<std::uint8_t> GenerateMasterBytesKeyFromToken(const std::stri
 	using namespace CommonSecurity::SHA;
 
 	std::vector<std::string> UUID_Parts;
-	int PartSize = Token.size() / 4;
+	size_t PartSize = Token.size() / 4;
 
-	for (int i = 0; i < 4; ++i)
+	for (size_t i = 0; i < 4; ++i)
 	{
 		UUID_Parts.push_back(Token.substr(i * PartSize, PartSize));
 	}
@@ -1628,7 +1628,7 @@ inline void MakePersonalPasswordDataFile(const std::string& UniqueFileName, cons
 
 	PersonalPasswordInfo.Serialization(filePath);
 
-	LogInfoHelper("Personal password data file created: {0}", filePath.string());
+	LogInfoHelper("Personal password data file created: {0}", std::make_tuple(filePath.string()));
 }
 
 inline void FirstLoginLogic(const std::vector<char>& BufferLoginPassword, const PasswordManagerUserKey& CurrentUserKey, PasswordManagerUserData& CurrentUserData)
