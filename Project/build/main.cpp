@@ -36,6 +36,11 @@ static void glfw_error_callback(int error, const char* description)
 // Main code
 int main(int, char**)
 {
+	Logger::Instance().Init();
+
+	Logger::Instance().Info().Log("test1:{}{}", "hello ","world");
+	Logger::Instance().Debug().Log("test2:{}", 42);
+
 	glfwSetErrorCallback(glfw_error_callback);
 	if (!glfwInit())
 		return 1;

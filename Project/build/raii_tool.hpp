@@ -56,10 +56,15 @@ public:
         return *this;
     }
 
-    ScopeGuard& dismiss() noexcept
+    ScopeGuard& dismiss()
     {
         _active = false;
         return *this;
+    }
+
+    bool is_active() const
+    {
+        return _active;
     }
 
 private:
@@ -80,25 +85,48 @@ inline auto MakeScopeGuard(F&& fn, Args&&... args) requires(std::invocable<F, Ar
 }
 
 template<typename T>
-class RollBackor
+	requires std::is_copy_constructible_v<T>&& std::is_copy_assignable_v<T>&&
+	requires(T a, const T& b)
+{
+	{ a = b } -> std::same_as<T&>;
+}
+class RollBacker
 {
     using data_t = std::decay_t<T>;
 public:
-    explicit RollBackor(T& val) : _now(val), _old(val), _active(true) {}
-    RollBackor(T&& val) = delete;
-    ~RollBackor() { if (_active) _now = _old; }
-    RollBackor() = delete;
-    RollBackor(const RollBackor&) = delete;
-    RollBackor& operator=(const RollBackor&) = delete;
-    RollBackor(RollBackor&&) noexcept = delete;
-    RollBackor& operator=(RollBackor&&) noexcept = delete;
+    explicit RollBacker(T& val) : _now(val), _old(val), _active(true) {}
+    RollBacker(T&& val) = delete;
+    ~RollBacker() { if (_active) _now = _old; }
+    RollBacker() = delete;
+    RollBacker(const RollBacker&) = delete;
+    RollBacker& operator=(const RollBacker&) = delete;
+    RollBacker(RollBacker&&) noexcept = delete;
+    RollBacker& operator=(RollBacker&&) noexcept = delete;
 
-    void dismiss() noexcept
+    RollBacker& dismiss()
     {
+
         _active = false;
+        return *this;
+    }
+
+    bool is_active() const
+    {
+        return _active;
+    }
+
+    data_t& get_now() const
+    {
+        return _now;
+    }
+
+    const data_t& get_old() const
+    {
+        return _old;
     }
 
 private:
+
     data_t& _now;
     const data_t _old;
     bool _active;
