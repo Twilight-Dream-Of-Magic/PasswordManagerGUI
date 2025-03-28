@@ -46,7 +46,7 @@ public:
 		SHOW_SRC_INFO = 1 << 16,
 		COLOR_SRC_INFO = 1 << 17,
 		COLOR_TIME = 1 << 18,
-		COLOR_TAG = 19
+		COLOR_TAG = 1 << 19
 	};
 
 	friend auto operator|(Logger::Mask a, Logger::Mask b) -> std::underlying_type_t<Logger::Mask>;
@@ -63,27 +63,55 @@ public:
 
 	void Init(std::filesystem::path filepath = "./log.txt", uint32_t logmask = uint32_t(-1));
 
-	uint32_t SetMask(uint32_t mask);
+	uint32_t SetDefaultMask(uint32_t mask);
 
-	uint32_t GetMask() const;
+	uint32_t GetDefaultMask() const;
 
-	void SetLogFile(const std::filesystem::path& filename, uint32_t mask = 0u);
+	void SetDefaultMaskFlag(Logger::Mask flag);
+
+	void UnsetDefaultMaskFlag(Logger::Mask flag);
+
+	void SetLogFile(const std::filesystem::path& filename, uint32_t mask = -1u);
 
 	template<typename STR> requires(std::is_convertible_v<STR, std::string>)
-	void Log(Logger::Level level, const STR& str, uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
+	void Log(Logger::Level level, const STR& str, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 	{
 		Print(level, str, mask, loc);
 	}
 
 	template <Printable... Types>
-	void Log(Level level, const std::format_string<Types...> fmt, const std::tuple<Types...>& tpl_args, uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
+	void Log(Level level, const std::format_string<Types...>& fmt, const std::tuple<Types...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 	{
 		DoLog(level, fmt.get(), tpl_args, mask ,loc);
 	}
 
+	class LogHelper;
+
+	/// ----------- Helper Chain ------------
+
+	Logger::LogHelper Helper(Logger::Level level = Logger::Level::NORMAL, uint32_t mask = -1u, 
+		const std::source_location& loc = std::source_location::current());
+
+	Logger::LogHelper Normal(uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
+
+	Logger::LogHelper Info(uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
+
+	Logger::LogHelper Debug(uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
+
+	Logger::LogHelper Notice(uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
+
+	Logger::LogHelper Warning(uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
+
+	Logger::LogHelper Error(uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
+
+	Logger::LogHelper Fatal(uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
+
+	/// ----------- Helper Chain ------------
+
 private:
+
 	template <Printable... Types>
-	void DoLog(Level level, const std::string_view sv, const std::tuple<Types...>& tpl_args, uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
+	void DoLog(Level level, const std::string_view sv, const std::tuple<Types...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 	{
 		try
 		{
@@ -92,77 +120,35 @@ private:
 				[&](const Types&... args)
 				{
 					return std::vformat(sv, std::make_format_args(args...));
-				}, 
+				},
 				tpl_args
 			);
 			Print(level, formatted, mask, loc);
 		}
 		catch (const std::format_error&)
 		{
-			std::stringstream ss{};
+			std::ostringstream ss{};
 			ss << "format_error: ";
 			ss << sv;
 			std::apply
 			(
-				[&](const Types&... args) 
+				[&](const Types&... args)
 				{
 					(ss << ... << args);
 				},
 				tpl_args
 			);
-			Print(level, ss.str(), mask,loc);
+			Print(level, ss.str(), mask, loc);
 		}
 	}
 
-	class LogHelper 
-	{
-	public:
-		LogHelper& Mask(uint32_t mask)
-		{
-			__mask = mask;
-		}
-		LogHelper& Level(Logger::Level level)
-		{
-			__level = level;
-		}
-		template <Printable... Types>
-		LogHelper& Log(const std::format_string<Types...> fmt, const Types&... args)
-		{
-			//try 
-			//{
-				const auto formatted = std::vformat(fmt.get(), std::make_format_args(args...));
-				__logger.Print(__level, formatted, __mask, __loc);
-			//}
-			//catch (const std::format_error&)
-			//{
-			//	std::stringstream ss{};
-			//	ss << "format_error: ";
-			//	ss << fmt.get();
-			//	(ss <<  ... << args);
-			//	__logger.Print(__level, ss.str(), __mask, __loc);
-			//}
-			return *this;
-		}
-		LogHelper(Logger& logger, Logger::Level level = Logger::Level::NORMAL, uint32_t mask = 0u, const std::source_location& loc = std::source_location::current()) :
-		__logger(logger),
-		__level(level),
-		__mask(mask),
-		__loc(loc)
-		{}
-	private:
-		std::source_location __loc;
-		Logger& __logger;
-		Logger::Level __level = Logger::Level::NORMAL;
-		uint32_t __mask = 0u;
-	};
-
 	Logger() = default;
 
-	void Print(Logger::Level level, const std::string_view message, uint32_t mask = 0u, const std::source_location& loc = std::source_location::current());
+	void Print(Logger::Level level, const std::string_view message, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current());
 
-	bool RotateLogFile(uint32_t try_count = 3, std::chrono::milliseconds t = std::chrono::milliseconds(3), uint32_t mask = 0u);
+	bool RotateLogFile(uint32_t try_count = 3, std::chrono::milliseconds t = std::chrono::milliseconds(3), uint32_t mask = -1u);
 
-	void LogToFile(const std::string& str, uint32_t mask = 0u);
+	void LogToFile(const std::string& str, uint32_t mask = -1u);
 
 	static std::string GetCurrentTimeStr();
 
@@ -170,54 +156,187 @@ private:
 	std::ofstream			_fs;
 	std::mutex				_mutex;
 	std::filesystem::path	_filename;
-	uint32_t				_mask = uint32_t(-1); 
-
-
-	/// ----------- Helper方法 ------------
-public:
-
-	Logger::LogHelper Helper(Logger::Level level = Logger::Level::NORMAL, uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, level, mask, loc);
-	}
-
-	Logger::LogHelper Normal(uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, Logger::Level::NORMAL, mask, loc);
-	}
-
-	Logger::LogHelper Info(uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, Logger::Level::INFO, mask, loc);
-	}
-
-	Logger::LogHelper Debug(uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, Logger::Level::DEBUG, mask, loc);
-	}
-
-	Logger::LogHelper Notice(uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, Logger::Level::NOTICE, mask, loc);
-	}
-
-	Logger::LogHelper Warning(uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, Logger::Level::WARNING, mask, loc);
-	}
-
-	Logger::LogHelper Error(uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, Logger::Level::ERROR, mask, loc);
-	}
-
-	Logger::LogHelper Fatal(uint32_t mask = 0u, const std::source_location& loc = std::source_location::current())
-	{
-		return LogHelper(*this, Logger::Level::FATAL, mask, loc);
-	}
+	uint32_t				_mask = -1u;
 };
 
-/// ----------- 友元方法 ------------
+
+
+/// ----------- Helper Class ------------
+
+class Logger::LogHelper
+{
+private:
+	LogHelper& operator=(LogHelper&&) = delete;
+	LogHelper& operator=(const LogHelper&) = delete;
+
+public:
+	class LogStream;
+
+	LogHelper(LogHelper&&) = default;
+	LogHelper(const LogHelper&) = default;
+
+	LogHelper::LogStream Stream() const;
+
+	LogHelper& Mask(uint32_t mask);
+
+	LogHelper& SetMaskFlag(Logger::Mask flag);
+
+	LogHelper& UnsetMaskFlag(Logger::Mask flag);
+
+	LogHelper& Level(Logger::Level level);
+
+	LogHelper& Log(const std::string& str);
+
+	template <Printable... Types>
+	LogHelper& Log(const std::format_string<Types...>& fmt, const Types&... args);
+
+	LogHelper(Logger& logger, Logger::Level level = Logger::Level::NORMAL, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current()) :
+		__logger(logger),
+		__level(level),
+		__mask(mask),
+		__loc(loc){}
+
+private:
+	std::source_location __loc;
+	Logger& __logger;
+	Logger::Level __level;
+	uint32_t __mask;
+};
+
+class Logger::LogHelper::LogStream
+{
+public:
+	LogStream(const LogHelper& helper) :
+		___ss(std::string(128,0x00)),
+		___helper(helper),
+		___loged(false) {
+	}
+	LogStream& Log();
+	~LogStream();
+	template<Printable Type>
+	LogStream& operator<<(const Type& data);
+	LogStream(Logger::LogHelper::LogStream&&) = default;
+	LogStream(const Logger::LogHelper::LogStream&) = default;
+private:
+	LogStream& operator=(Logger::LogHelper::LogStream&&) = delete;
+	LogStream& operator=(const Logger::LogHelper::LogStream&) = delete;
+	std::ostringstream ___ss;
+	LogHelper ___helper;
+	bool ___loged;
+};
+
+/// ----------- Helper Class ------------
+
+/// ----------- Helper Chain Funciton ------------
+
+inline Logger::LogHelper& Logger::LogHelper::Mask(uint32_t mask)
+{
+	__mask = mask;
+	return *this;
+}
+
+inline Logger::LogHelper& Logger::LogHelper::SetMaskFlag(Logger::Mask flag)
+{
+	__mask |= ~~flag;
+	return *this;
+}
+
+inline Logger::LogHelper& Logger::LogHelper::UnsetMaskFlag(Logger::Mask flag)
+{
+	__mask &= ~flag;
+	return *this;
+}
+
+inline Logger::LogHelper& Logger::LogHelper::Level(Logger::Level level)
+{
+	__level = level;
+	return *this;
+}
+
+inline Logger::LogHelper& Logger::LogHelper::Log(const std::string& str)
+{
+	__logger.Print(__level, str, __mask, __loc);
+	return *this;
+}
+
+template <Printable... Types>
+inline Logger::LogHelper& Logger::LogHelper::Log(const std::format_string<Types...>& fmt, const Types&... args)
+{
+	const auto formatted = std::vformat(fmt.get(), std::make_format_args(args...));
+	__logger.Print(__level, formatted, __mask, __loc);
+	return *this;
+}
+
+inline Logger::LogHelper::LogStream& Logger::LogHelper::LogStream::Log()
+{
+	if (!___ss.str().empty())
+	{
+		___helper.Log(___ss.str());
+		___loged = true;
+	}
+	return *this;
+}
+
+template<Printable Type>
+inline Logger::LogHelper::LogStream& Logger::LogHelper::LogStream::operator<<(const Type& data)
+{
+	___ss << data;
+	return *this;
+}
+
+inline Logger::LogHelper::LogStream Logger::LogHelper::Stream() const
+{
+	return LogHelper::LogStream(*this);
+}
+
+inline Logger::LogHelper::LogStream::~LogStream()
+{
+	if (!___loged) Log();
+}
+
+inline Logger::LogHelper Logger::Helper(Logger::Level level, uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, level, mask, loc);
+}
+
+inline Logger::LogHelper Logger::Normal(uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, Logger::Level::NORMAL, mask, loc);
+}
+
+inline Logger::LogHelper Logger::Info(uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, Logger::Level::INFO, mask, loc);
+}
+
+inline Logger::LogHelper Logger::Debug(uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, Logger::Level::DEBUG, mask, loc);
+}
+
+inline Logger::LogHelper Logger::Notice(uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, Logger::Level::NOTICE, mask, loc);
+}
+
+inline Logger::LogHelper Logger::Warning(uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, Logger::Level::WARNING, mask, loc);
+}
+
+inline Logger::LogHelper Logger::Error(uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, Logger::Level::ERROR, mask, loc);
+}
+
+inline Logger::LogHelper Logger::Fatal(uint32_t mask, const std::source_location& loc)
+{
+	return LogHelper(*this, Logger::Level::FATAL, mask, loc);
+}
+
+/// ----------- Helper Chain Funciton ------------
+
+/// ----------- Friend Function ------------
 
 inline auto operator|(Logger::Mask a, Logger::Mask b) -> std::underlying_type_t<Logger::Mask>
 {
@@ -239,7 +358,9 @@ inline auto operator~(Logger::Mask a) -> std::underlying_type_t<Logger::Mask>
 	return (~std::underlying_type_t<Logger::Mask>(a));
 }
 
-/// ----------- public方法 ------------
+/// ----------- Friend Function ------------
+
+/// ----------- Public Function ------------
 
 inline Logger& Logger::Instance()
 {
@@ -265,7 +386,17 @@ inline void Logger::Init(std::filesystem::path filepath, uint32_t logmask)
 	SetLogFile(filepath, _mask);
 }
 
-inline uint32_t Logger::SetMask(uint32_t mask)
+inline void Logger::SetDefaultMaskFlag(Logger::Mask flag)
+{
+	_mask |= ~~flag;
+}
+
+inline void Logger::UnsetDefaultMaskFlag(Logger::Mask flag)
+{
+	_mask &= ~flag;
+}
+
+inline uint32_t Logger::SetDefaultMask(uint32_t mask)
 {
 	std::scoped_lock lock(_mutex);
 	auto			 old_mask = _mask;
@@ -273,7 +404,7 @@ inline uint32_t Logger::SetMask(uint32_t mask)
 	return old_mask;
 }
 
-inline uint32_t Logger::GetMask() const
+inline uint32_t Logger::GetDefaultMask() const
 {
 	return _mask;
 }
@@ -365,9 +496,9 @@ inline void Logger::Print(Logger::Level level, const std::string_view message, u
 	static constexpr std::string_view time_color_str = "\033[3m\033[4m";
 	static constexpr std::string_view tag_color_str = "\033[4m\033[7m";
 
-	static const auto generate_text = [](uint32_t mask, Logger::Level level, const std::source_location& loc, const std::string_view message, bool show_color) -> std::stringstream
+	static const auto generate_text = [](uint32_t mask, Logger::Level level, const std::source_location& loc, const std::string_view message, bool show_color) -> std::ostringstream
 	{
-		std::stringstream		ss{};
+		std::ostringstream		ss{};
 		auto					time_str = Logger::GetCurrentTimeStr();
 		auto& [tag, color] = get_config(level);
 
@@ -443,15 +574,20 @@ inline void Logger::Print(Logger::Level level, const std::string_view message, u
 	}
 }
 
-/// ----------- private方法 ------------
+/// ----------- Public Function ------------
+
+
+/// ----------- Private Function ------------
 
 inline void Logger::SetLogFile(const std::filesystem::path& filename, uint32_t mask)
 {
-	const auto handle_exception = [](decltype(*this) self, uint32_t mask, const std::filesystem::path& filepath, const std::string_view message)
+	static const auto handle_exception = [](Logger& self, uint32_t mask, const std::filesystem::path& filepath, const std::string_view message)
 	{
 		const uint32_t mask_do_not_print_to_file = mask & ~Logger::Mask::LOG_TO_FILE;
 		self.Log(Logger::Level::ERROR, "Set File {} failed : {}", std::tuple(filepath.string(), message), mask_do_not_print_to_file);
 	};
+
+	std::scoped_lock<std::mutex> lock(_mutex);
 
 	if (_fs.is_open())
 	{
@@ -465,11 +601,11 @@ inline void Logger::SetLogFile(const std::filesystem::path& filename, uint32_t m
 	}
 	catch (const std::exception& e)
 	{
-		handle_exception(*this, mask, _filename, e.what());
+		handle_exception(*this, mask, filename, e.what());
 	}
 	catch (...)
 	{
-		handle_exception(*this,mask, _filename, "： Unknown exception");
+		handle_exception(*this, mask, filename, "Unknown exception");
 	}
 }
 
@@ -477,7 +613,8 @@ inline bool Logger::RotateLogFile(uint32_t try_count, std::chrono::milliseconds 
 {
 	for (uint32_t i = 0; i < try_count; ++i)
 	{
-		const auto handle_exception = [](decltype(*this) self, uint32_t mask, const std::filesystem::path& filepath, uint32_t try_count, uint32_t i, const std::string_view message)
+		static const auto handle_exception = [](Logger& self, uint32_t mask, const std::filesystem::path& filepath, uint32_t try_count, 
+			uint32_t i, const std::string_view message)
 		{
 			const uint32_t mask_do_not_print_to_file = mask & ~Mask::LOG_TO_FILE; 
 			self.Log(Logger::Level::ERROR, "Rotate File {} failed after {}, attempts {} : {}", std::tuple(filepath.string(), try_count, i + 1, message), mask_do_not_print_to_file);
@@ -489,9 +626,18 @@ inline bool Logger::RotateLogFile(uint32_t try_count, std::chrono::milliseconds 
 			{
 				_fs.close();
 			}
+			const auto zt = std::chrono::zoned_time{ std::chrono::current_zone(), std::chrono::system_clock::now() };
+			const std::string_view time_str = std::format("{:%y-%m-%d-%H-%M-%S}", zt.get_local_time());
+			const std::string_view stem_str = _filename.stem().string();
+			const std::string_view extension_str = _filename.extension().string();
+			const auto new_name = _filename.parent_path() / std::format("{}_{}_{}{}",
+				stem_str,
+				time_str,
+				i,
+				extension_str
+			);
 
-			auto new_name = _filename.parent_path() / std::format("{}_{}.{}{}", _filename.stem().string(), GetCurrentTimeStr(), i + 1u, _filename.extension().string());
-
+			std::lock_guard<std::mutex> lock(_mutex);
 			std::filesystem::rename(_filename, new_name);
 			_fs.open(_filename, std::ios::app);
 			return true;
@@ -504,7 +650,11 @@ inline bool Logger::RotateLogFile(uint32_t try_count, std::chrono::milliseconds 
 		{
 			handle_exception(*this, mask, _filename, try_count, i, "Unknown exception");
 		}
-		//std::this_thread::sleep_for(time_ms); todo:这里使用协程调度
+
+		if (i < try_count -1)
+		{
+			std::this_thread::sleep_for(time_ms); //todo:这里使用协程调度
+		}
 	}
 	return false;
 }
@@ -520,7 +670,7 @@ inline void Logger::LogToFile(const std::string& str, uint32_t mask)
 		}
 	}
 
-	const auto handle_exception = [](decltype(*this) self, uint32_t mask, const std::filesystem::path& filepath, const std::string_view message)
+	static const auto handle_exception = [](Logger& self, uint32_t mask, const std::filesystem::path& filepath, const std::string_view message)
 	{
 		const uint32_t mask_do_not_print_to_file = mask & ~Logger::Mask::LOG_TO_FILE;
 		self.Log(Logger::Level::ERROR, "Failed to log to file {} : {}", std::tuple(filepath.string(), message), mask_do_not_print_to_file);
@@ -531,7 +681,7 @@ inline void Logger::LogToFile(const std::string& str, uint32_t mask)
 		std::lock_guard<std::mutex> lock(_mutex);
 		_fs << str;
 		_fs.flush();
-	}
+	}     
 	catch (const std::exception& e)
 	{
 		handle_exception(*this, mask, _filename.string(), e.what());
@@ -548,93 +698,95 @@ inline std::string Logger::GetCurrentTimeStr()
 	return std::format("[{:%Y-%m-%d %H:%M:%S}]", zt);
 }
 
-//// ---------- DEBUG 级别 ----------
+/// ----------- Private Function ------------
 
-inline void LogDebugHelper(const std::string& s, const std::source_location& loc = std::source_location::current())
+//// ---------- DEBUG Level ----------
+
+inline void LogDebugHelper(const std::string& s, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::DEBUG, s, 0u, loc);
+	Logger::Instance().Log(Logger::Level::DEBUG, s, mask, loc);
 }
 
 template <Printable... Args>
-inline void LogDebugHelper(const std::format_string<Args...> fmt, const std::tuple<Args...>& tpl_args, const std::source_location& loc = std::source_location::current())
+inline void LogDebugHelper(const std::format_string<Args...>& fmt, const std::tuple<Args...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::DEBUG, fmt, tpl_args, 0u, loc);
+	Logger::Instance().Log(Logger::Level::DEBUG, fmt, tpl_args, mask, loc);
 }
 
-//// ---------- INFO 级别 ----------
+//// ---------- INFO Level ----------
 
-inline void LogInfoHelper(const std::string& s, const std::source_location& loc = std::source_location::current())
+inline void LogInfoHelper(const std::string& s, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::INFO, s, 0u, loc);
-}
-
-template <Printable... Args>
-inline void LogInfoHelper(const std::format_string<Args...> fmt, const std::tuple<Args...>& tpl_args, const std::source_location& loc = std::source_location::current())
-{
-	Logger::Instance().Log(Logger::Level::INFO, fmt, tpl_args, 0u, loc);
-}
-
-//// ---------- NORMAL 级别 ----------
-
-inline void LogNormalHelper(const std::string& s, const std::source_location& loc = std::source_location::current())
-{
-	Logger::Instance().Log(Logger::Level::NORMAL, s, 0u, loc);
+	Logger::Instance().Log(Logger::Level::INFO, s, mask, loc);
 }
 
 template <Printable... Args>
-inline void LogNormalHelper(const std::format_string<Args...> fmt, const std::tuple<Args...>& tpl_args, const std::source_location& loc = std::source_location::current())
+inline void LogInfoHelper(const std::format_string<Args...>& fmt, const std::tuple<Args...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::NORMAL, fmt, tpl_args, 0u, loc);
+	Logger::Instance().Log(Logger::Level::INFO, fmt, tpl_args, mask, loc);
 }
 
-//// ---------- NOTICE 级别 ----------
+//// ---------- NORMAL Level ----------
 
-inline void LogNoticeHelper(const std::string& s, const std::source_location& loc = std::source_location::current())
+inline void LogNormalHelper(const std::string& s, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::NOTICE, s, 0u, loc);
-}
-
-template <Printable... Args>
-inline void LogNoticeHelper(const std::format_string<Args...> fmt, const std::tuple<Args...>& tpl_args, const std::source_location& loc = std::source_location::current())
-{
-	Logger::Instance().Log(Logger::Level::NOTICE, fmt, tpl_args, 0u, loc);
-}
-
-//// ---------- WARNING 级别 ----------
-
-inline void LogWarnHelper(const std::string& s, const std::source_location& loc = std::source_location::current())
-{
-	Logger::Instance().Log(Logger::Level::WARNING, s, 0u, loc);
+	Logger::Instance().Log(Logger::Level::NORMAL, s, mask, loc);
 }
 
 template <Printable... Args>
-inline void LogWarnHelper(const std::format_string<Args...> fmt, const std::tuple<Args...>& tpl_args, const std::source_location& loc = std::source_location::current())
+inline void LogNormalHelper(const std::format_string<Args...>& fmt, const std::tuple<Args...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::WARNING, fmt, tpl_args, 0u, loc);
+	Logger::Instance().Log(Logger::Level::NORMAL, fmt, tpl_args, mask, loc);
 }
 
-//// ---------- ERROR 级别 ----------
+//// ---------- NOTICE Level ----------
 
-inline void LogErrorHelper(const std::string& s, const std::source_location& loc = std::source_location::current())
+inline void LogNoticeHelper(const std::string& s, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::ERROR, s, 0u, loc);
-}
-
-template <Printable... Args>
-inline void LogErrorHelper(const std::format_string<Args...> fmt, const std::tuple<Args...>& tpl_args, const std::source_location& loc = std::source_location::current())
-{
-	Logger::Instance().Log(Logger::Level::ERROR, fmt, tpl_args, 0u, loc);
-}
-
-//// ---------- FATAL 级别 ----------
-
-inline void LogFatalHelper(const std::string& s, const std::source_location& loc = std::source_location::current())
-{
-	Logger::Instance().Log(Logger::Level::FATAL, s, 0u, loc);
+	Logger::Instance().Log(Logger::Level::NOTICE, s, mask, loc);
 }
 
 template <Printable... Args>
-inline void LogFatalHelper(const std::format_string<Args...> fmt, const std::tuple<Args...>& tpl_args, const std::source_location& loc = std::source_location::current())
+inline void LogNoticeHelper(const std::format_string<Args...>& fmt, const std::tuple<Args...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
 {
-	Logger::Instance().Log(Logger::Level::FATAL, fmt, tpl_args, 0u, loc);
+	Logger::Instance().Log(Logger::Level::NOTICE, fmt, tpl_args, mask, loc);
+}
+
+//// ---------- WARNING Level ----------
+
+inline void LogWarnHelper(const std::string& s, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
+{
+	Logger::Instance().Log(Logger::Level::WARNING, s, mask, loc);
+}
+
+template <Printable... Args>
+inline void LogWarnHelper(const std::format_string<Args...>& fmt, const std::tuple<Args...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
+{
+	Logger::Instance().Log(Logger::Level::WARNING, fmt, tpl_args, mask, loc);
+}
+
+//// ---------- ERROR Level ----------
+
+inline void LogErrorHelper(const std::string& s, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
+{
+	Logger::Instance().Log(Logger::Level::ERROR, s, mask, loc);
+}
+
+template <Printable... Args>
+inline void LogErrorHelper(const std::format_string<Args...>& fmt, const std::tuple<Args...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
+{
+	Logger::Instance().Log(Logger::Level::ERROR, fmt, tpl_args, mask, loc);
+}
+
+//// ---------- FATAL Level ----------
+
+inline void LogFatalHelper(const std::string& s, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
+{
+	Logger::Instance().Log(Logger::Level::FATAL, s, mask, loc);
+}
+
+template <Printable... Args>
+inline void LogFatalHelper(const std::format_string<Args...>& fmt, const std::tuple<Args...>& tpl_args, uint32_t mask = -1u, const std::source_location& loc = std::source_location::current())
+{
+	Logger::Instance().Log(Logger::Level::FATAL, fmt, tpl_args, mask, loc);
 }
