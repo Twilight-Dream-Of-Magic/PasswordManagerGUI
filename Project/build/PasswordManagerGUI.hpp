@@ -1,6 +1,6 @@
 #pragma once
 
-#include "application_core_functional.hpp"
+#include "CodeCore/application_functional.hpp"
 
 struct ApplicationData
 {
@@ -53,10 +53,13 @@ struct ApplicationData
 	bool ShowPFI_NeedSerpent = false;
 
 	bool ShowPFI_CreateFileInstance = false;
+	bool ShowPFI_ListAllFileInstanceData = false;
 	bool ShowPFI_DeleteFileInstance = false;
 	bool ShowPFI_EncryptFile = false;
 	bool ShowPFI_DecryptFile = false;
-	bool ShowPFI_ConfirmDeleteAllFileInstances = false;
+	bool ShowPFI_ConfirmDeleteAllFileInstancesPopup = false;
+	bool ShowPFI_EncryptFileResultPopup = false;
+	bool ShowPFI_DecryptFileResultPopup = false;
 
 	std::uint64_t ShowPFI_SelectedFileInstanceID = 0;
 	std::vector<std::string> ShowPFI_EncryptionAlgorithms;
@@ -71,7 +74,14 @@ struct ApplicationData
 	std::filesystem::path PersonalPasswordInfoFilePath;
 
 	PersonalFileInfo PersonalFileInfo;
-	std::filesystem::path PersonalFileInfoFilePath;
+	std::filesystem::path PersonalDataInfoFilePath;
+
+	bool IsSourceFileSelected = false;
+	std::filesystem::path SourceFilePath;
+	bool IsEncryptedFileSelected = false;
+	std::filesystem::path EncryptedFilePath;
+	bool IsDecryptedFileSelected = false;
+	std::filesystem::path DecryptedFilePath;
 
 	/* Atomic flag indicating if any background task is currently running */
 	std::atomic_bool TaskInProgress = false;
@@ -150,8 +160,106 @@ inline void Do_LogoutPersonalPasswordInfo(std::vector<char>& BufferLoginPassword
 inline void Do_CreatePasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
 	static const auto task_create_and_encrypt_password = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		//Select Algorithms
+		if (AppData.ShowPPI_NeedAES)
 		{
-			//Select Algorithms
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
+		}
+		if (AppData.ShowPPI_NeedRC6)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
+		}
+		if (AppData.ShowPPI_NeedSM4)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
+		}
+		if (AppData.ShowPPI_NeedTwofish)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
+		}
+		if (AppData.ShowPPI_NeedSerpent)
+		{
+			AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
+		}
+
+		CurrentApplicationData.progress = 0.2f;
+
+		AppData.ShowPPI_DecryptionAlgorithms.resize(AppData.ShowPPI_EncryptionAlgorithms.size(), "");
+		std::reverse_copy
+		(
+			AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(),
+			AppData.ShowPPI_DecryptionAlgorithms.begin()
+		);
+
+		CurrentApplicationData.progress = 0.4f;
+
+		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+
+		if
+		(
+			!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
+			!AppData.ShowPPI_NewPassword.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
+			!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
+		)
+		{
+			auto new_end = std::find_if
+			(
+				AppData.ShowPPI_NewPassword.rbegin(), AppData.ShowPPI_NewPassword.rend(),
+				[](char character)
+				{
+					return character != '\x00';
+				}
+			);
+
+			AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
+
+			CurrentApplicationData.progress = 0.6f;
+
+			// 调用CreatePasswordInstance函数来执行创建密码实例的操作
+			auto PasswordInstance = AppData.PersonalPasswordInfo.CreatePasswordInstance
+			(
+				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+				AppData.ShowPPI_Description, AppData.ShowPPI_NewPassword,
+				AppData.ShowPPI_EncryptionAlgorithms,
+				AppData.ShowPPI_DecryptionAlgorithms
+			);
+			AppData.PersonalPasswordInfo.AppendPasswordInstance(PasswordInstance);
+
+			CurrentApplicationData.progress = 0.8f;
+
+			AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
+
+			//AppData.ShowPPI_CreatePasswordInstance = false;
+			AppData.IsPasswordInfoValid = false;
+		}
+
+		CurrentApplicationData.progress = 1.0f;
+
+		//Clear Application GUI State Data
+		AppData.ShowPPI_NewPassword = std::string(2048, 0x00);
+		AppData.ShowPPI_Description = std::string(2048, 0x00);
+		AppData.ShowPPI_EncryptionAlgorithms.clear();
+		AppData.ShowPPI_DecryptionAlgorithms.clear();
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AsyncTask(AppData.TaskInProgress, task_create_and_encrypt_password, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
+	}
+}
+
+inline void Do_ChangePasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
+{
+	static const auto task_change_pwd_ins = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		if (AppData.ShowPPI_ChangeEncryptedPassword)
+		{
 			if (AppData.ShowPPI_NeedAES)
 			{
 				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
@@ -173,335 +281,27 @@ inline void Do_CreatePasswordInstance(std::vector<char>& BufferLoginPassword, Ap
 				AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
 			}
 
-			CurrentApplicationData.progress = 0.2f;
-
 			AppData.ShowPPI_DecryptionAlgorithms.resize(AppData.ShowPPI_EncryptionAlgorithms.size(), "");
-			std::reverse_copy(AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(), AppData.ShowPPI_DecryptionAlgorithms.begin());
+			std::reverse_copy
+			(
+				AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(),
+				AppData.ShowPPI_DecryptionAlgorithms.begin()
+			);
+		}
 
+		CurrentApplicationData.progress = 0.2f;
+
+		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+
+		if
+			(
+				!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
+				!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
+				!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
+				)
+		{
 			CurrentApplicationData.progress = 0.4f;
 
-			const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
-
-			if
-				(
-					!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
-					!AppData.ShowPPI_NewPassword.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
-					!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
-					)
-			{
-				auto new_end = std::find_if
-				(
-					AppData.ShowPPI_NewPassword.rbegin(), AppData.ShowPPI_NewPassword.rend(),
-					[](char character)
-					{
-						return character != '\x00';
-					}
-				);
-
-				AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
-
-				CurrentApplicationData.progress = 0.6f;
-
-				// 调用CreatePasswordInstance函数来执行创建密码实例的操作
-				auto PasswordInstance = AppData.PersonalPasswordInfo.CreatePasswordInstance
-				(
-					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-					AppData.ShowPPI_Description, AppData.ShowPPI_NewPassword,
-					AppData.ShowPPI_EncryptionAlgorithms,
-					AppData.ShowPPI_DecryptionAlgorithms
-				);
-				AppData.PersonalPasswordInfo.AppendPasswordInstance(PasswordInstance);
-
-				CurrentApplicationData.progress = 0.8f;
-
-				AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
-
-				//AppData.ShowPPI_CreatePasswordInstance = false;
-				AppData.IsPasswordInfoValid = false;
-			}
-
-			CurrentApplicationData.progress = 1.0f;
-
-			//Clear Application GUI State Data
-			AppData.ShowPPI_NewPassword = std::string(2048, 0x00);
-			AppData.ShowPPI_Description = std::string(2048, 0x00);
-			AppData.ShowPPI_EncryptionAlgorithms.clear();
-			AppData.ShowPPI_DecryptionAlgorithms.clear();
-		};
-
-	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
-		{
-			AsyncTask(AppData.TaskInProgress, task_create_and_encrypt_password, std::ref(AppData), std::cref(BufferLoginPassword));
-		};
-
-	if (!AppData.TaskInProgress)
-	{
-		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
-	}
-}
-
-inline void Do_ChangePasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
-{
-	static const auto task_change_pwd_ins = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
-		{
-			if (AppData.ShowPPI_ChangeEncryptedPassword)
-			{
-				if (AppData.ShowPPI_NeedAES)
-				{
-					AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
-				}
-				if (AppData.ShowPPI_NeedRC6)
-				{
-					AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
-				}
-				if (AppData.ShowPPI_NeedSM4)
-				{
-					AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
-				}
-				if (AppData.ShowPPI_NeedTwofish)
-				{
-					AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
-				}
-				if (AppData.ShowPPI_NeedSerpent)
-				{
-					AppData.ShowPPI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
-				}
-
-				AppData.ShowPPI_DecryptionAlgorithms.resize(AppData.ShowPPI_EncryptionAlgorithms.size(), "");
-				std::reverse_copy(AppData.ShowPPI_EncryptionAlgorithms.begin(), AppData.ShowPPI_EncryptionAlgorithms.end(), AppData.ShowPPI_DecryptionAlgorithms.begin());
-			}
-
-			CurrentApplicationData.progress = 0.2f;
-
-			const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
-
-			if
-				(
-					!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
-					!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
-					!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
-					)
-			{
-				CurrentApplicationData.progress = 0.4f;
-
-				auto new_end = std::find_if
-				(
-					AppData.ShowPPI_Password.rbegin(), AppData.ShowPPI_Password.rend(),
-					[](char character)
-					{
-						return character != '\x00';
-					}
-				);
-
-				AppData.ShowPPI_Password.erase(new_end.base(), AppData.ShowPPI_Password.end());
-
-				new_end = std::find_if
-				(
-					AppData.ShowPPI_Description.rbegin(), AppData.ShowPPI_Description.rend(),
-					[](char character)
-					{
-						return character != '\x00';
-					}
-				);
-
-				AppData.ShowPPI_Description.erase(new_end.base(), AppData.ShowPPI_Description.end());
-
-				CurrentApplicationData.progress = 0.6f;
-
-				// 调用ChangePasswordInstance函数来执行更改密码实例的操作
-				bool IsChanged = AppData.PersonalPasswordInfo.ChangePasswordInstance
-				(
-					AppData.ShowPPI_SelectedPasswordInstanceID, AppData.ShowPPI_Description, AppData.ShowPPI_Password,
-					AppData.ShowPPI_EncryptionAlgorithms, AppData.ShowPPI_DecryptionAlgorithms,
-					MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword), AppData.ShowPPI_ChangeEncryptedPassword
-				);
-
-				CurrentApplicationData.progress = 0.8f;
-
-				if (IsChanged)
-				{
-					// 更改成功的处理逻辑
-					AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
-					AppData.IsPasswordInfoValid = false;
-					AppData.ShowPPI_ChangePasswordInstanceSuccessful = true;
-
-					//Clear Application GUI State Data
-					AppData.ShowPPI_Password = std::string(2048, 0x00);
-					AppData.ShowPPI_Description = std::string(2048, 0x00);
-					AppData.ShowPPI_EncryptionAlgorithms.clear();
-					AppData.ShowPPI_DecryptionAlgorithms.clear();
-				}
-				else
-				{
-					// 更改失败的处理逻辑
-
-					AppData.ShowPPI_ChangePasswordInstanceFailed = true;
-
-					//Clear Application GUI State Data
-					AppData.ShowPPI_Password = std::string(2048, 0x00);
-					AppData.ShowPPI_Description = std::string(2048, 0x00);
-					AppData.ShowPPI_EncryptionAlgorithms.clear();
-					AppData.ShowPPI_DecryptionAlgorithms.clear();
-				}
-
-				CurrentApplicationData.progress = 1.0f;
-			}
-		};
-
-	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
-		{
-			AsyncTask(AppData.TaskInProgress, task_change_pwd_ins, std::ref(AppData), std::cref(BufferLoginPassword));
-		};
-
-	if (!AppData.TaskInProgress)
-	{
-		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
-	}
-}
-
-inline void Do_DecryptionAllPasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
-{
-	static const auto task_list_all_pwd_ins = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
-		{
-			AppData.PersonalPasswordInfo.Deserialization(AppData.PersonalPasswordInfoFilePath);
-
-			CurrentApplicationData.progress = 0.5f;
-
-			// 调用ListAllPasswordInstance函数来执行列出密码实例的操作
-			AppData.PersonalPasswordInfo.ListAllPasswordInstance
-			(
-				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword)
-			);
-
-			CurrentApplicationData.progress = 1.0f;
-		};
-
-	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
-		{
-			AsyncTask(AppData.TaskInProgress, task_list_all_pwd_ins, std::ref(AppData), std::cref(BufferLoginPassword));
-		};
-
-	if (!AppData.TaskInProgress)
-	{
-		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
-	}
-}
-
-inline void Do_FindPasswordInstanceByID(std::vector<char>& BufferLoginPassword, ApplicationData& AppData, std::string& buffer)
-{
-	static const auto task_find_pwd_ins_by_id = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
-		{
-			auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByID
-			(
-				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-				AppData.ShowPPI_SelectedPasswordInstanceID
-			);
-
-			CurrentApplicationData.progress = 0.2f;
-
-			if (Optional.has_value())
-			{
-				auto& Instance = Optional.value();
-				std::ostringstream oss;
-				oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
-
-				CurrentApplicationData.progress = 0.4f;
-
-				oss << "Encryption Algorithms:\n";
-				for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
-				{
-					oss << std::format("- {}\n", algorithm.data());
-				}
-
-				CurrentApplicationData.progress = 0.6f;
-
-				oss << "Decryption Algorithms:\n";
-				for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
-				{
-					oss << std::format("- {}\n", algorithm.data());
-				}
-				buffer = oss.str();
-
-				CurrentApplicationData.progress = 0.8f;
-			}
-			else
-			{
-				buffer = "No suitable ID found.";
-			}
-
-			CurrentApplicationData.progress = 1.0f;
-		};
-
-	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
-		{
-			AsyncTask(AppData.TaskInProgress, task_find_pwd_ins_by_id, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer));
-		};
-
-	if (!AppData.TaskInProgress)
-	{
-		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer)).detach();
-	}
-}
-
-inline void Do_FindPasswordInstanceByDescription(std::vector<char>& BufferLoginPassword, ApplicationData& AppData, std::string& buffer)
-{
-	static const auto task_find_pwd_ins_by_desc = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
-		{
-			auto new_end = std::find_if
-			(
-				AppData.ShowPPI_SelectedPasswordInstanceDescription.rbegin(), AppData.ShowPPI_SelectedPasswordInstanceDescription.rend(),
-				[](char character)
-				{
-					return character != '\x00';
-				}
-			);
-
-			AppData.ShowPPI_SelectedPasswordInstanceDescription.erase(new_end.base(), AppData.ShowPPI_SelectedPasswordInstanceDescription.end());
-
-			auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByDescription
-			(
-				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
-				AppData.ShowPPI_SelectedPasswordInstanceDescription
-			);
-
-			if (Optional.has_value())
-			{
-				auto& Instance = Optional.value();
-				std::ostringstream oss;
-				oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
-				oss << "Encryption Algorithms:\n";
-				for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
-				{
-					oss << std::format("- {}\n", algorithm.data());
-				}
-				oss << "Decryption Algorithms:\n";
-				for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
-				{
-					oss << std::format("- {}\n", algorithm.data());
-				}
-				buffer = oss.str();
-			}
-			else
-			{
-				buffer = "No suitable Description found.";
-			}
-		};
-
-	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
-		{
-			AsyncTask(AppData.TaskInProgress, task_find_pwd_ins_by_desc, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer));
-		};
-
-	if (!AppData.TaskInProgress)
-	{
-		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer)).detach();
-	}
-}
-
-inline void Do_ChangeInstanceMasterKeyWithSystemPassword(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
-{
-	static const auto task_change_ins_mst_key_wth_sys_pwd = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
-		{
 			auto new_end = std::find_if
 			(
 				AppData.ShowPPI_Password.rbegin(), AppData.ShowPPI_Password.rend(),
@@ -515,97 +315,315 @@ inline void Do_ChangeInstanceMasterKeyWithSystemPassword(std::vector<char>& Buff
 
 			new_end = std::find_if
 			(
-				AppData.ShowPPI_NewPassword.rbegin(), AppData.ShowPPI_NewPassword.rend(),
+				AppData.ShowPPI_Description.rbegin(), AppData.ShowPPI_Description.rend(),
 				[](char character)
 				{
 					return character != '\x00';
 				}
 			);
 
-			AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
+			AppData.ShowPPI_Description.erase(new_end.base(), AppData.ShowPPI_Description.end());
 
-			CurrentApplicationData.progress = 0.2f;
+			CurrentApplicationData.progress = 0.6f;
 
-			std::string Password(BufferLoginPassword.begin(), BufferLoginPassword.end());
-
-			new_end = std::find_if
+			// 调用ChangePasswordInstance函数来执行更改密码实例的操作
+			bool IsChanged = AppData.PersonalPasswordInfo.ChangePasswordInstance
 			(
-				Password.rbegin(), Password.rend(),
-				[](char character)
-				{
-					return character != '\x00';
-				}
+				AppData.ShowPPI_SelectedPasswordInstanceID, AppData.ShowPPI_Description, AppData.ShowPPI_Password,
+				AppData.ShowPPI_EncryptionAlgorithms, AppData.ShowPPI_DecryptionAlgorithms,
+				MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword), AppData.ShowPPI_ChangeEncryptedPassword
 			);
 
-			Password.erase(new_end.base(), Password.end());
+			CurrentApplicationData.progress = 0.8f;
+
+			if (IsChanged)
+			{
+				// 更改成功的处理逻辑
+				AppData.PersonalPasswordInfo.Serialization(AppData.PersonalPasswordInfoFilePath);
+				AppData.IsPasswordInfoValid = false;
+				AppData.ShowPPI_ChangePasswordInstanceSuccessful = true;
+
+				//Clear Application GUI State Data
+				AppData.ShowPPI_Password = std::string(2048, 0x00);
+				AppData.ShowPPI_Description = std::string(2048, 0x00);
+				AppData.ShowPPI_EncryptionAlgorithms.clear();
+				AppData.ShowPPI_DecryptionAlgorithms.clear();
+			}
+			else
+			{
+				// 更改失败的处理逻辑
+
+				AppData.ShowPPI_ChangePasswordInstanceFailed = true;
+
+				//Clear Application GUI State Data
+				AppData.ShowPPI_Password = std::string(2048, 0x00);
+				AppData.ShowPPI_Description = std::string(2048, 0x00);
+				AppData.ShowPPI_EncryptionAlgorithms.clear();
+				AppData.ShowPPI_DecryptionAlgorithms.clear();
+			}
+
+			CurrentApplicationData.progress = 1.0f;
+		}
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AsyncTask(AppData.TaskInProgress, task_change_pwd_ins, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
+	}
+}
+
+inline void Do_DecryptionAllPasswordInstance(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
+{
+	static const auto task_list_all_pwd_ins = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AppData.PersonalPasswordInfo.Deserialization(AppData.PersonalPasswordInfoFilePath);
+
+		CurrentApplicationData.progress = 0.5f;
+
+		// 调用ListAllPasswordInstance函数来执行列出密码实例的操作
+		AppData.PersonalPasswordInfo.ListAllPasswordInstance
+		(
+			MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword)
+		);
+
+		CurrentApplicationData.progress = 1.0f;
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		AsyncTask(AppData.TaskInProgress, task_list_all_pwd_ins, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword)).detach();
+	}
+}
+
+inline void Do_FindPasswordInstanceByID(std::vector<char>& BufferLoginPassword, ApplicationData& AppData, std::string& buffer)
+{
+	static const auto task_find_pwd_ins_by_id = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByID
+		(
+			MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+			AppData.ShowPPI_SelectedPasswordInstanceID
+		);
+
+		CurrentApplicationData.progress = 0.2f;
+
+		if (Optional.has_value())
+		{
+			auto& Instance = Optional.value();
+			std::ostringstream oss;
+			oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
 
 			CurrentApplicationData.progress = 0.4f;
 
-			auto SG = MakeScopeGuard
-			(
-				[](ApplicationData& AppData, char ch, size_t size = 2048) //2028是默认值所以可以不传
-				{
-					AppData.ShowPPI_Password = std::string(size, ch);
-					AppData.ShowPPI_NewPassword = std::string(size, ch);
-				},
-				std::ref(AppData),  //注意，这里传ref，因为上面要&
-				static_cast<char>(0x00)
-			);
-
-			if (!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_NewPassword.empty())
+			oss << "Encryption Algorithms:\n";
+			for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
 			{
-				// Verify Password
-				const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData) && std::equal(AppData.ShowPPI_Password.begin(), AppData.ShowPPI_Password.end(), Password.begin(), Password.end());
-
-				const bool IsNotChangePassword = std::equal(AppData.ShowPPI_NewPassword.begin(), AppData.ShowPPI_NewPassword.end(), Password.begin(), Password.end());
-
-				CurrentApplicationData.progress = 0.6f;
-
-				if (IsNotChangePassword)
-				{
-					// 密码未更改的提示框
-					AppData.ShowPPI_SystemPasswordNotChange = true;
-					return;
-				}
-
-				if (VaildPassword)
-				{
-					LoadPasswordManagerUser(AppData.UserKey, AppData.UserData);
-
-					CurrentApplicationData.progress = 0.7f;
-
-					AppData.PersonalPasswordInfo.ChangeInstanceMasterKeyWithSystemPassword
-					(
-						AppData.PersonalPasswordInfoFilePath,
-						AppData.UserKey.RandomUUID + AppData.ShowPPI_Password,
-						AppData.UserKey.RandomUUID + AppData.ShowPPI_NewPassword
-					);
-
-					CurrentApplicationData.progress = 0.8f;
-
-					AppData.UserData.HashedPassword = PasswordAndHash(AppData.ShowPPI_NewPassword, AppData.UserKey.RandomPasswordSalt);
-
-					CurrentApplicationData.progress = 0.9f;
-
-					SavePasswordManagerUser(std::pair<PasswordManagerUserKey, PasswordManagerUserData>{AppData.UserKey, AppData.UserData});
-
-					// 更改密码成功的提示框
-					AppData.ShowPPI_SystemPasswordChangeSuccessful = true;
-				}
-				else
-				{
-					// 更改密码失败的提示框
-					AppData.ShowPPI_SystemPasswordChangeFailed = true;
-				}
-
-				CurrentApplicationData.progress = 1.0f;
+				oss << std::format("- {}\n", algorithm.data());
 			}
-		};
+
+			CurrentApplicationData.progress = 0.6f;
+
+			oss << "Decryption Algorithms:\n";
+			for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
+			{
+				oss << std::format("- {}\n", algorithm.data());
+			}
+			buffer = oss.str();
+
+			CurrentApplicationData.progress = 0.8f;
+		}
+		else
+		{
+			buffer = "No suitable ID found.";
+		}
+
+		CurrentApplicationData.progress = 1.0f;
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		AsyncTask(AppData.TaskInProgress, task_find_pwd_ins_by_id, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer)).detach();
+	}
+}
+
+inline void Do_FindPasswordInstanceByDescription(std::vector<char>& BufferLoginPassword, ApplicationData& AppData, std::string& buffer)
+{
+	static const auto task_find_pwd_ins_by_desc = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		auto new_end = std::find_if
+		(
+			AppData.ShowPPI_SelectedPasswordInstanceDescription.rbegin(), AppData.ShowPPI_SelectedPasswordInstanceDescription.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		AppData.ShowPPI_SelectedPasswordInstanceDescription.erase(new_end.base(), AppData.ShowPPI_SelectedPasswordInstanceDescription.end());
+
+		auto Optional = AppData.PersonalPasswordInfo.FindPasswordInstanceByDescription
+		(
+			MakeTokenString(AppData.UserKey.RandomUUID, BufferLoginPassword),
+			AppData.ShowPPI_SelectedPasswordInstanceDescription
+		);
+
+		if (Optional.has_value())
+		{
+			auto& Instance = Optional.value();
+			std::ostringstream oss;
+			oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
+			oss << "Encryption Algorithms:\n";
+			for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
+			{
+				oss << std::format("- {}\n", algorithm.data());
+			}
+			oss << "Decryption Algorithms:\n";
+			for (const auto& algorithm : Instance.DecryptionAlgorithmNames)
+			{
+				oss << std::format("- {}\n", algorithm.data());
+			}
+			buffer = oss.str();
+		}
+		else
+		{
+			buffer = "No suitable Description found.";
+		}
+	};
+
+	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword, std::string& buffer)
+	{
+		AsyncTask(AppData.TaskInProgress, task_find_pwd_ins_by_desc, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer));
+	};
+
+	if (!AppData.TaskInProgress)
+	{
+		std::thread(async_task, std::ref(AppData), std::cref(BufferLoginPassword), std::ref(buffer)).detach();
+	}
+}
+
+inline void Do_ChangeInstanceMasterKeyWithSystemPassword(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
+{
+	static const auto task_change_ins_mst_key_wth_sys_pwd = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
+	{
+		auto new_end = std::find_if
+		(
+			AppData.ShowPPI_Password.rbegin(), AppData.ShowPPI_Password.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		AppData.ShowPPI_Password.erase(new_end.base(), AppData.ShowPPI_Password.end());
+
+		new_end = std::find_if
+		(
+			AppData.ShowPPI_NewPassword.rbegin(), AppData.ShowPPI_NewPassword.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		AppData.ShowPPI_NewPassword.erase(new_end.base(), AppData.ShowPPI_NewPassword.end());
+
+		CurrentApplicationData.progress = 0.2f;
+
+		std::string Password(BufferLoginPassword.begin(), BufferLoginPassword.end());
+
+		new_end = std::find_if
+		(
+			Password.rbegin(), Password.rend(),
+			[](char character)
+			{
+				return character != '\x00';
+			}
+		);
+
+		Password.erase(new_end.base(), Password.end());
+
+		CurrentApplicationData.progress = 0.4f;
+
+		auto SG = MakeScopeGuard
+		(
+			[](ApplicationData& AppData, char ch, size_t size = 2048) //2028是默认值所以可以不传
+			{
+				AppData.ShowPPI_Password = std::string(size, ch);
+				AppData.ShowPPI_NewPassword = std::string(size, ch);
+			},
+			std::ref(AppData),  //注意，这里传ref，因为上面要&
+			static_cast<char>(0x00)
+		);
+
+		if (!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_NewPassword.empty())
+		{
+			// Verify Password
+			const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData) && std::equal(AppData.ShowPPI_Password.begin(), AppData.ShowPPI_Password.end(), Password.begin(), Password.end());
+
+			const bool IsNotChangePassword = std::equal(AppData.ShowPPI_NewPassword.begin(), AppData.ShowPPI_NewPassword.end(), Password.begin(), Password.end());
+
+			CurrentApplicationData.progress = 0.6f;
+
+			if (IsNotChangePassword)
+			{
+				// 密码未更改的提示框
+				AppData.ShowPPI_SystemPasswordNotChange = true;
+				return;
+			}
+
+			if (VaildPassword)
+			{
+				LoadPasswordManagerUser(AppData.UserKey, AppData.UserData);
+
+				CurrentApplicationData.progress = 0.7f;
+
+				AppData.PersonalPasswordInfo.ChangeInstanceMasterKeyWithSystemPassword
+				(
+					AppData.PersonalPasswordInfoFilePath,
+					AppData.UserKey.RandomUUID + AppData.ShowPPI_Password,
+					AppData.UserKey.RandomUUID + AppData.ShowPPI_NewPassword
+				);
+
+				CurrentApplicationData.progress = 0.8f;
+
+				AppData.UserData.HashedPassword = PasswordAndHash(AppData.ShowPPI_NewPassword, AppData.UserKey.RandomPasswordSalt);
+
+				CurrentApplicationData.progress = 0.9f;
+
+				SavePasswordManagerUser(std::pair<PasswordManagerUserKey, PasswordManagerUserData>{AppData.UserKey, AppData.UserData});
+
+				// 更改密码成功的提示框
+				AppData.ShowPPI_SystemPasswordChangeSuccessful = true;
+			}
+			else
+			{
+				// 更改密码失败的提示框
+				AppData.ShowPPI_SystemPasswordChangeFailed = true;
+			}
+
+			CurrentApplicationData.progress = 1.0f;
+		}
+	};
 
 	static const auto async_task = [](ApplicationData& AppData, const std::vector<char>& BufferLoginPassword)
-		{
-			AsyncTask(AppData.TaskInProgress, task_change_ins_mst_key_wth_sys_pwd, std::ref(AppData), std::cref(BufferLoginPassword));
-		};
+	{
+		AsyncTask(AppData.TaskInProgress, task_change_ins_mst_key_wth_sys_pwd, std::ref(AppData), std::cref(BufferLoginPassword));
+	};
 
 	if (!AppData.TaskInProgress)
 	{
@@ -679,24 +697,35 @@ inline void Do_Login
 			CurrentApplicationData.UserKey = CurrentUserKey;
 			CurrentApplicationData.UserData = CurrentUserData;
 
-			CurrentApplicationData.PersonalPasswordInfoFilePath = std::filesystem::path(std::string("PersonalPasswordData/") + CurrentApplicationData.UserData.PersonalPasswordInfoFileName + ".json");
+			if(CurrentApplicationData.UserData.PersonalPasswordInfoFileName.empty() || CurrentApplicationData.UserData.PersonalDataInfoFileName.empty())
+			{
+				std::string UniqueFileName = GenerateStringFileUUIDFromStringUUID(CurrentApplicationData.UserKey.RandomUUID);
+				CurrentApplicationData.UserData.PersonalDataInfoFileName = "Files_" + UniqueFileName + ".json";
+				CurrentApplicationData.UserData.PersonalPasswordInfoFileName = "Passwords_" + UniqueFileName + ".json";
+			}
+
+			CurrentApplicationData.PersonalPasswordInfoFilePath = std::filesystem::path(std::string("PersonalPasswordData/") + CurrentApplicationData.UserData.PersonalPasswordInfoFileName);
+			CurrentApplicationData.PersonalDataInfoFilePath = std::filesystem::path(std::string("PersonalFileData/") + CurrentApplicationData.UserData.PersonalDataInfoFileName);
+			
 			CurrentApplicationData.PersonalPasswordInfo.Deserialization(CurrentApplicationData.PersonalPasswordInfoFilePath);
+
+			if (std::filesystem::exists(CurrentApplicationData.PersonalDataInfoFilePath))
+			{
+				CurrentApplicationData.PersonalFileInfo.Deserialization(CurrentApplicationData.PersonalDataInfoFilePath);
+			}
+			else
+			{
+				if(!std::filesystem::is_directory(CurrentApplicationData.PersonalDataInfoFilePath.parent_path()))
+				{
+					std::filesystem::create_directories(CurrentApplicationData.PersonalDataInfoFilePath.parent_path());
+				}
+				CurrentApplicationData.PersonalFileInfo.Serialization(CurrentApplicationData.PersonalDataInfoFilePath);
+			}
 
 			CurrentApplicationData.ShowGUI_PersonalPasswordInfo = true;
 
 			CurrentApplicationData.ShowPPI_CreatePasswordInstance = true;
 			CurrentApplicationData.ShowPPI_ChangePasswordInstance = true;
-
-			CurrentApplicationData.PersonalFileInfoFilePath = std::filesystem::path("PersonalFileData/" + CurrentApplicationData.UserData.PersonalInfoFileName + ".json");
-
-			if (std::filesystem::exists(CurrentApplicationData.PersonalFileInfoFilePath))
-			{
-				CurrentApplicationData.PersonalFileInfo.Deserialization(CurrentApplicationData.PersonalFileInfoFilePath);
-			}
-			else
-			{
-				CurrentApplicationData.PersonalFileInfo.Serialization(CurrentApplicationData.PersonalFileInfoFilePath);
-			}
 
 			CurrentApplicationData.ShowGUI_PersonalFileInfo = true;
 		}
@@ -704,14 +733,12 @@ inline void Do_Login
 		{
 			if (VaildUsername == false && VaildPassword == true)
 			{
-				//std::cout << "Failed to login, incorrect username by UUID checking" << std::endl;
 				LogWarnHelper("Failed to login, incorrect username by UUID checking");
 				// Username validation failed
 				ShowUsernameAuthenticationFailedPopup = true;
 			}
 			else if (VaildUsername == true && VaildPassword == false)
 			{
-				//std::cout << "Failed to login, incorrect password by security comparison" << std::endl;
 				LogWarnHelper("Failed to login, incorrect password by security comparison");
 
 				// Password validation failed
@@ -745,7 +772,8 @@ inline void ApplicationUserRegistration
 	ImGui::InputText("New Username", BufferRegisterUsername.data(), 2048, ImGuiInputTextFlags_None);
 	ImGui::InputText("New Password", BufferRegisterPassword.data(), 2048, ImGuiInputTextFlags_Password);
 
-	if (ImGui::Button("Register")) {
+	if (ImGui::Button("Register"))
+	{
 
 		PasswordManagerUserKey NewUserKey;
 		PasswordManagerUserData NewUserData;
@@ -1363,59 +1391,418 @@ inline void ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(std::vector<ch
 
 /* ShowGUI PersonalFileInfo Part */
 
-// 文件选择对话框函数
-std::filesystem::path OpenFileDialog(const char* dialogTitle)
+template <typename Callback_t, typename... Args>
+requires std::invocable<Callback_t, std::filesystem::path, Args...>
+auto FileDialogCallback( const char* dialogTitle, Callback_t&& callback, Args&&... args ) -> std::optional<std::invoke_result_t<Callback_t, std::filesystem::path, Args...>>
 {
-	std::filesystem::path selectedPath;
-
-	if (ImGui::Button(dialogTitle))
+	if ( ImGui::Button( dialogTitle ) )
 	{
-		ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", dialogTitle, nullptr);
+		IGFD::FileDialogConfig FDConfig;
+		FDConfig.path = ".";
+		ImGuiFileDialog::Instance()->OpenDialog
+		(
+			"ChooseFileDialogKey", dialogTitle,
+			".*", // 文件后缀名过滤器  (".*") (nullptr)
+			FDConfig
+		);
 	}
 
-	if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey"))
+	if ( ImGuiFileDialog::Instance()->Display( "ChooseFileDialogKey" ) )
 	{
-		if (ImGuiFileDialog::Instance()->IsOk())
+		if ( ImGuiFileDialog::Instance()->IsOk() )
 		{
-			std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-			selectedPath = filePathName;
+			auto SelectedPath = ImGuiFileDialog::Instance()->GetFilePathName();
+			ImGuiFileDialog::Instance()->Close();
+
+			if constexpr ( std::is_void_v<std::invoke_result_t<Callback_t, std::filesystem::path, Args...>> )
+			{
+				std::forward<Callback_t>( callback )( SelectedPath, std::forward<Args>( args )... );
+				return std::nullopt;
+			}
+			else
+			{
+				return std::forward<Callback_t>( callback )( SelectedPath, std::forward<Args>( args )... );
+			}
 		}
 		ImGuiFileDialog::Instance()->Close();
 	}
-
-	return selectedPath;
+	return std::nullopt;
 }
 
-std::filesystem::path SaveFileDialog(const char* dialogTitle)
+void ShowGUI_PFI_CreateFileInstance( ApplicationData& AppData )
 {
-	std::filesystem::path selectedPath;
-
-	if (ImGui::Button(dialogTitle))
+	if ( AppData.ShowPFI_CreateFileInstance )
 	{
-		ImGuiFileDialog::Instance()->OpenDialog("SaveFileDlgKey", dialogTitle, nullptr);
-	}
-
-	if (ImGuiFileDialog::Instance()->Display("SaveFileDlgKey"))
-	{
-		if (ImGuiFileDialog::Instance()->IsOk())
+		if ( ImGui::Begin( "Create File Instance", &AppData.ShowPFI_CreateFileInstance, ImGuiWindowFlags_AlwaysAutoResize ) )
 		{
-			std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-			selectedPath = filePathName;
-		}
-		ImGuiFileDialog::Instance()->Close();
-	}
+			ImGui::InputScalar( "File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID );
 
-	return selectedPath;
+			ImGui::Checkbox( "Need AES", &AppData.ShowPFI_NeedAES );
+			ImGui::Checkbox( "Need RC6", &AppData.ShowPFI_NeedRC6 );
+			ImGui::Checkbox( "Need SM4", &AppData.ShowPFI_NeedSM4 );
+			ImGui::Checkbox( "Need Twofish", &AppData.ShowPFI_NeedTwofish );
+			ImGui::Checkbox( "Need Serpent", &AppData.ShowPFI_NeedSerpent );
+
+			if ( ImGui::Button( "Create File Instance" ) )
+			{
+				// 选择加密算法
+				AppData.ShowPFI_EncryptionAlgorithms.clear();
+				if ( AppData.ShowPFI_NeedAES )
+					AppData.ShowPFI_EncryptionAlgorithms.push_back( CryptoCipherAlgorithmNames[ 0 ] );
+				if ( AppData.ShowPFI_NeedRC6 )
+					AppData.ShowPFI_EncryptionAlgorithms.push_back( CryptoCipherAlgorithmNames[ 1 ] );
+				if ( AppData.ShowPFI_NeedSM4 )
+					AppData.ShowPFI_EncryptionAlgorithms.push_back( CryptoCipherAlgorithmNames[ 2 ] );
+				if ( AppData.ShowPFI_NeedTwofish )
+					AppData.ShowPFI_EncryptionAlgorithms.push_back( CryptoCipherAlgorithmNames[ 3 ] );
+				if ( AppData.ShowPFI_NeedSerpent )
+					AppData.ShowPFI_EncryptionAlgorithms.push_back( CryptoCipherAlgorithmNames[ 4 ] );
+
+				// 生成解密算法名称（反向顺序）
+				AppData.ShowPFI_DecryptionAlgorithms.resize(AppData.ShowPFI_EncryptionAlgorithms.size(), "");
+				std::reverse_copy
+				(
+					AppData.ShowPFI_EncryptionAlgorithms.begin(), AppData.ShowPFI_EncryptionAlgorithms.end(),
+					AppData.ShowPFI_DecryptionAlgorithms.begin()
+				);
+
+				// 创建文件实例
+				auto FileInstance = AppData.PersonalFileInfo.CreateFileInstance( MakeTokenString( AppData.UserKey.RandomUUID, AppData.ShowPPI_Password ), AppData.ShowPFI_EncryptionAlgorithms, AppData.ShowPFI_DecryptionAlgorithms );
+
+				AppData.PersonalFileInfo.AppendFileInstance( FileInstance );
+				AppData.PersonalFileInfo.Serialization( AppData.PersonalDataInfoFilePath );
+
+				AppData.ShowPFI_CreateFileInstance = false;
+
+				// 清除 GUI 状态数据
+				AppData.ShowPFI_EncryptionAlgorithms.clear();
+				AppData.ShowPFI_DecryptionAlgorithms.clear();
+			}
+
+			if ( ImGui::Button( "Cancel" ) )
+			{
+				AppData.ShowPFI_CreateFileInstance = false;
+
+				// 清除 GUI 状态数据
+				AppData.ShowPFI_EncryptionAlgorithms.clear();
+				AppData.ShowPFI_DecryptionAlgorithms.clear();
+			}
+		}
+		ImGui::End();
+	}
+}
+
+inline void ShowGUI_PFI_ListAllFileInstanceData( ApplicationData& AppData )
+{
+	if ( AppData.ShowPFI_ListAllFileInstanceData )
+	{
+		if ( ImGui::Begin( "List All File Instances", &AppData.ShowPFI_ListAllFileInstanceData, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			//TODO: 显示文件实例列表
+		}
+		ImGui::End();
+	}
+}
+
+void ShowGUI_PFI_DeleteFileInstance( ApplicationData& AppData )
+{
+	if ( AppData.ShowPFI_DeleteFileInstance )
+	{
+		if ( ImGui::Begin( "Delete File Instance", &AppData.ShowPFI_DeleteFileInstance, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			ImGui::InputScalar( "File Instance ID to Delete", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID );
+
+			if ( ImGui::Button( "Delete" ) )
+			{
+				if ( AppData.PersonalFileInfo.RemoveFileInstance( AppData.ShowPFI_SelectedFileInstanceID ) )
+				{
+					AppData.PersonalFileInfo.Serialization( AppData.PersonalDataInfoFilePath );
+				}
+
+				AppData.ShowPFI_DeleteFileInstance = false;
+			}
+
+			if ( ImGui::Button( "Cancel" ) )
+			{
+				AppData.ShowPFI_DeleteFileInstance = false;
+			}
+		}
+		ImGui::End();
+	}
+}
+
+void ShowGUI_PFI_ConfirmDeleteAllFileInstances( ApplicationData& AppData )
+{
+	if ( AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup )
+	{
+		ImGui::OpenPopup("Confirm Delete All File Instances");
+	}
+	if ( ImGui::BeginPopupModal( "Confirm Delete All File Instances", &AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup, ImGuiWindowFlags_AlwaysAutoResize ) )
+	{
+		ImGui::Text( "Are you sure you want to delete all file instances?" );
+
+		if ( ImGui::Button( "Delete All" ) )
+		{
+			AppData.PersonalFileInfo.RemoveAllFileInstances();
+			AppData.PersonalFileInfo.Serialization( AppData.PersonalDataInfoFilePath );
+			AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup = false;
+			ImGui::CloseCurrentPopup();
+		}
+
+		if ( ImGui::Button( "Cancel" ) )
+		{
+			AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup = false;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
+	}
+}
+
+void ShowGUI_PFI_EncryptFile(std::vector<char>& BufferLoginPassword, ApplicationData& AppData )
+{
+	if ( AppData.ShowPFI_EncryptFile )
+	{
+		if ( ImGui::Begin( "Encrypt File", &AppData.ShowPFI_EncryptFile, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+			// 选择文件实例
+			ImGui::InputScalar( "Select File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID );
+
+			if(!VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData))
+			{
+				ImGui::Text("Error system password, you forget it?");
+			}
+			else
+			{
+				ImGui::Text("System password is correct.");
+			}
+
+			if(!AppData.IsSourceFileSelected)
+			{
+				// 选择源文件
+				FileDialogCallback
+				( 
+					"Select File to Encrypt",
+					[](const std::filesystem::path& in_path, std::filesystem::path& out_path, bool& result)
+					{
+						out_path = in_path;
+						result = !out_path.empty();
+						return out_path;
+					}, std::ref(AppData.SourceFilePath), std::ref(AppData.IsSourceFileSelected)
+				);
+			}
+
+			if(!AppData.IsEncryptedFileSelected)
+			{
+				// 选择加密文件
+				FileDialogCallback
+				( 
+					"Save Encrypted File",
+					[](const std::filesystem::path& SelectedPath, std::filesystem::path& out_path, bool& result)
+					{
+						out_path = SelectedPath;
+						result = !out_path.empty();
+						return out_path;
+					}, std::ref(AppData.EncryptedFilePath), std::ref(AppData.IsEncryptedFileSelected)
+				);
+			}
+
+			bool Success = false;
+			if ( ImGui::Button( "Encrypt" ) )
+			{
+				if ( !AppData.SourceFilePath.empty() && !AppData.EncryptedFilePath.empty() )
+				{
+					std::string Password(BufferLoginPassword.begin(), BufferLoginPassword.end());
+
+					auto new_end = std::find_if
+					(
+						Password.rbegin(), Password.rend(),
+						[](char character)
+						{
+							return character != '\x00';
+						}
+					);
+
+					Password.erase(new_end.base(), Password.end());
+
+					// 查找对应的文件实例
+					auto& FileInstance = AppData.PersonalFileInfo.GetFileInstanceByID( AppData.ShowPFI_SelectedFileInstanceID );
+
+					Success = AppData.PersonalFileInfo.EncryptFile
+					(
+						MakeTokenString( AppData.UserKey.RandomUUID, Password ),
+						FileInstance, AppData.SourceFilePath, AppData.EncryptedFilePath
+					);
+
+					AppData.SourceFilePath.clear();
+					AppData.EncryptedFilePath.clear();
+				}
+
+				AppData.IsSourceFileSelected = false;
+				AppData.IsEncryptedFileSelected = false;
+			}
+
+			if ( AppData.ShowPFI_EncryptFileResultPopup )
+			{
+				ImGui::OpenPopup("Encrypt File Result");
+			}
+			if ( ImGui::BeginPopupModal( "Encrypt File Result", &AppData.ShowPFI_EncryptFileResultPopup, ImGuiWindowFlags_AlwaysAutoResize ) )
+			{
+				if ( Success )
+				{
+					ImGui::Text( "File encrypted successfully." );
+					AppData.ShowPFI_EncryptFileResultPopup = false;
+					ImGui::CloseCurrentPopup();
+				}
+				else
+				{
+					ImGui::Text( "File encryption failed." );
+					AppData.ShowPFI_EncryptFileResultPopup = false;
+					ImGui::CloseCurrentPopup();
+				}
+
+				ImGui::EndPopup();
+			}
+
+			if ( ImGui::Button( "Close" ) )
+			{
+				AppData.ShowPFI_EncryptFile = false;
+			}
+		}
+		ImGui::End();
+	}
+}
+
+void ShowGUI_PFI_DecryptFile( std::vector<char>& BufferLoginPassword, ApplicationData& AppData )
+{
+	if ( AppData.ShowPFI_DecryptFile )
+	{
+		if ( ImGui::Begin( "Decrypt File", &AppData.ShowPFI_DecryptFile, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
+			// 选择文件实例
+			ImGui::InputScalar( "Select File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID );
+
+			if(!VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData))
+			{
+				ImGui::Text("Error system password, you forget it?");
+			}
+			else
+			{
+				ImGui::Text("System password is correct.");
+			}
+
+			if(!AppData.IsEncryptedFileSelected)
+			{
+				// 选择加密文件
+				FileDialogCallback
+				( 
+					"Select Encrypted File to Decrypt",
+					[](const std::filesystem::path& in_path, std::filesystem::path& out_path, bool& result)
+					{
+						out_path = in_path;
+						result = !out_path.empty();
+						return out_path;
+					}, std::ref(AppData.EncryptedFilePath), std::ref(AppData.IsEncryptedFileSelected)
+				);
+			}
+			
+			if(!AppData.IsDecryptedFileSelected)
+			{
+				// 选择解密文件
+				FileDialogCallback
+				( 
+					"Save Decrypted File",
+					[](const std::filesystem::path& in_path, std::filesystem::path& out_path, bool& result)
+					{
+						out_path = in_path;
+						result = !out_path.empty();
+						return out_path;
+					}, std::ref(AppData.DecryptedFilePath), std::ref(AppData.IsDecryptedFileSelected)
+				);
+			}
+
+			bool Success = false;
+			if ( ImGui::Button( "Decrypt" ) )
+			{
+				if ( !AppData.EncryptedFilePath.empty() && !AppData.DecryptedFilePath.empty() )
+				{
+					std::string Password(BufferLoginPassword.begin(), BufferLoginPassword.end());
+
+					auto new_end = std::find_if
+					(
+						Password.rbegin(), Password.rend(),
+						[](char character)
+						{
+							return character != '\x00';
+						}
+					);
+
+					Password.erase(new_end.base(), Password.end());
+
+					// 查找对应的文件实例
+					auto& FileInstance = AppData.PersonalFileInfo.GetFileInstanceByID( AppData.ShowPFI_SelectedFileInstanceID );
+
+					Success = AppData.PersonalFileInfo.DecryptFile
+					(
+						MakeTokenString( AppData.UserKey.RandomUUID, Password ),
+						FileInstance, AppData.EncryptedFilePath, AppData.DecryptedFilePath
+					);
+
+					AppData.EncryptedFilePath.clear();
+					AppData.DecryptedFilePath.clear();
+				}
+
+				AppData.IsEncryptedFileSelected = false;
+				AppData.IsDecryptedFileSelected = false;
+			}
+
+			if ( AppData.ShowPFI_DecryptFileResultPopup )
+			{
+				ImGui::OpenPopup("Decrypt File Result");
+			}
+
+			if ( ImGui::BeginPopupModal( "Decrypt File Result", &AppData.ShowPFI_DecryptFileResultPopup, ImGuiWindowFlags_AlwaysAutoResize ) )
+			{
+				if ( Success )
+				{
+					ImGui::Text( "File decrypted successfully." );
+					AppData.ShowPFI_DecryptFileResultPopup = false;
+					ImGui::CloseCurrentPopup();
+				}
+				else
+				{
+					ImGui::Text( "File decryption failed." );
+					AppData.ShowPFI_DecryptFileResultPopup = false;
+					ImGui::CloseCurrentPopup();
+				}
+
+				ImGui::EndPopup();
+			}
+
+			if ( ImGui::Button( "Close" ) )
+			{
+				AppData.ShowPFI_DecryptFile = false;
+			}
+		}
+		ImGui::End();
+	}
 }
 
 // 显示 PersonalFileInfo 的 GUI
-inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
+inline void ShowGUI_PersonalFileInfo(std::vector<char>& BufferLoginPassword, ApplicationData& AppData)
 {
 	ImGui::Begin("Personal File Info");
 
 	if (ImGui::Button("Create File Instance"))
 	{
-		AppData.ShowPFI_CreateFileInstance = true;
+		AppData.ShowPFI_CreateFileInstance = !AppData.ShowPFI_CreateFileInstance;
+	}
+
+	if (ImGui::Button("List All File Instances"))
+	{
+		AppData.ShowPFI_ListAllFileInstanceData = !AppData.ShowPFI_ListAllFileInstanceData;
 	}
 
 	if (ImGui::Button("Delete File Instance By ID"))
@@ -1435,13 +1822,7 @@ inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
 
 	if (ImGui::Button("Delete All File Instances"))
 	{
-		AppData.ShowPFI_ConfirmDeleteAllFileInstances = true;
-	}
-
-	if (ImGui::Button("List All File Instances"))
-	{
-		// 这里可以添加列出所有文件实例的功能
-		// 例如，弹出一个新窗口显示所有文件实例
+		AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup = true;
 	}
 
 	if (ImGui::Button("Back"))
@@ -1452,206 +1833,8 @@ inline void ShowGUI_PersonalFileInfo(ApplicationData& AppData)
 		AppData.ShowPFI_DeleteFileInstance = false;
 		AppData.ShowPFI_EncryptFile = false;
 		AppData.ShowPFI_DecryptFile = false;
-		AppData.ShowPFI_ConfirmDeleteAllFileInstances = false;
+		AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup = false;
 	}
 
 	ImGui::End();
-
-	// 创建文件实例弹窗
-	if (AppData.ShowPFI_CreateFileInstance)
-	{
-		if (ImGui::Begin("Create File Instance", &AppData.ShowPFI_CreateFileInstance, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			ImGui::InputScalar("File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
-
-			ImGui::Checkbox("Need AES", &AppData.ShowPFI_NeedAES);
-			ImGui::Checkbox("Need RC6", &AppData.ShowPFI_NeedRC6);
-			ImGui::Checkbox("Need SM4", &AppData.ShowPFI_NeedSM4);
-			ImGui::Checkbox("Need Twofish", &AppData.ShowPFI_NeedTwofish);
-			ImGui::Checkbox("Need Serpent", &AppData.ShowPFI_NeedSerpent);
-
-			if (ImGui::Button("Create File Instance"))
-			{
-				// 选择加密算法
-				AppData.ShowPFI_EncryptionAlgorithms.clear();
-				if (AppData.ShowPFI_NeedAES)
-					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[0]);
-				if (AppData.ShowPFI_NeedRC6)
-					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[1]);
-				if (AppData.ShowPFI_NeedSM4)
-					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[2]);
-				if (AppData.ShowPFI_NeedTwofish)
-					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[3]);
-				if (AppData.ShowPFI_NeedSerpent)
-					AppData.ShowPFI_EncryptionAlgorithms.push_back(CryptoCipherAlgorithmNames[4]);
-
-				// 生成解密算法名称（反向顺序）
-				std::reverse_copy(AppData.ShowPFI_DecryptionAlgorithms.begin(), AppData.ShowPFI_DecryptionAlgorithms.end(), AppData.ShowPFI_DecryptionAlgorithms.begin());
-
-				// 创建文件实例
-				auto FileInstance = AppData.PersonalFileInfo.CreateFileInstance(
-					MakeTokenString(AppData.UserKey.RandomUUID, AppData.ShowPPI_Password),
-					AppData.ShowPFI_EncryptionAlgorithms,
-					AppData.ShowPFI_DecryptionAlgorithms
-				);
-
-				AppData.PersonalFileInfo.AppendFileInstance(FileInstance);
-				AppData.PersonalFileInfo.Serialization(AppData.PersonalFileInfoFilePath);
-
-				AppData.ShowPFI_CreateFileInstance = false;
-
-				// 清除 GUI 状态数据
-				AppData.ShowPFI_EncryptionAlgorithms.clear();
-				AppData.ShowPFI_DecryptionAlgorithms.clear();
-			}
-
-			if (ImGui::Button("Cancel"))
-			{
-				AppData.ShowPFI_CreateFileInstance = false;
-
-				// 清除 GUI 状态数据
-				AppData.ShowPFI_EncryptionAlgorithms.clear();
-				AppData.ShowPFI_DecryptionAlgorithms.clear();
-			}
-
-		}
-		ImGui::End();
-	}
-
-	// 删除文件实例弹窗
-	if (AppData.ShowPFI_DeleteFileInstance)
-	{
-		if (ImGui::Begin("Delete File Instance", &AppData.ShowPFI_DeleteFileInstance, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			ImGui::InputScalar("File Instance ID to Delete", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
-
-			if (ImGui::Button("Delete"))
-			{
-				if (AppData.PersonalFileInfo.RemoveFileInstance(AppData.ShowPFI_SelectedFileInstanceID))
-				{
-					AppData.PersonalFileInfo.Serialization(AppData.PersonalFileInfoFilePath);
-				}
-
-				AppData.ShowPFI_DeleteFileInstance = false;
-			}
-
-			if (ImGui::Button("Cancel"))
-			{
-				AppData.ShowPFI_DeleteFileInstance = false;
-			}
-
-		}
-		ImGui::End();
-	}
-
-	// 加密文件弹窗
-	if (AppData.ShowPFI_EncryptFile)
-	{
-		if (ImGui::Begin("Encrypt File", &AppData.ShowPFI_EncryptFile, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			// 选择文件实例
-			ImGui::InputScalar("Select File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
-
-			// 选择源文件
-			std::filesystem::path SourceFilePath = OpenFileDialog("Select File to Encrypt");
-			// 选择保存路径
-			std::filesystem::path EncryptedFilePath = SaveFileDialog("Save Encrypted File");
-
-			if (!SourceFilePath.empty() && !EncryptedFilePath.empty())
-			{
-				// 查找对应的文件实例
-				auto& FileInstance = AppData.PersonalFileInfo.GetFileInstanceByID(AppData.ShowPFI_SelectedFileInstanceID);
-
-				bool success = AppData.PersonalFileInfo.EncryptFile(
-					MakeTokenString(AppData.UserKey.RandomUUID, AppData.ShowPPI_Password),
-					FileInstance,
-					SourceFilePath,
-					EncryptedFilePath
-				);
-
-				if (success)
-				{
-					ImGui::Text("File encrypted successfully.");
-				}
-				else
-				{
-					ImGui::Text("File encryption failed.");
-				}
-			}
-
-			if (ImGui::Button("Close"))
-			{
-				AppData.ShowPFI_EncryptFile = false;
-			}
-
-		}
-		ImGui::End();
-	}
-
-	// 解密文件弹窗
-	if (AppData.ShowPFI_DecryptFile)
-	{
-		if (ImGui::Begin("Decrypt File", &AppData.ShowPFI_DecryptFile, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			// 选择文件实例
-			ImGui::InputScalar("Select File Instance ID", ImGuiDataType_U64, &AppData.ShowPFI_SelectedFileInstanceID);
-
-			// 选择加密文件
-			std::filesystem::path EncryptedFilePath = OpenFileDialog("Select Encrypted File to Decrypt");
-			// 选择保存路径
-			std::filesystem::path DecryptedFilePath = SaveFileDialog("Save Decrypted File");
-
-			if (!EncryptedFilePath.empty() && !DecryptedFilePath.empty())
-			{
-				// 查找对应的文件实例
-				auto& FileInstance = AppData.PersonalFileInfo.GetFileInstanceByID(AppData.ShowPFI_SelectedFileInstanceID);
-
-				bool success = AppData.PersonalFileInfo.DecryptFile(
-					MakeTokenString(AppData.UserKey.RandomUUID, AppData.ShowPPI_Password),
-					FileInstance,
-					EncryptedFilePath,
-					DecryptedFilePath
-				);
-
-				if (success)
-				{
-					ImGui::Text("File decrypted successfully.");
-				}
-				else
-				{
-					ImGui::Text("File decryption failed.");
-				}
-			}
-
-			if (ImGui::Button("Close"))
-			{
-				AppData.ShowPFI_DecryptFile = false;
-			}
-
-		}
-		ImGui::End();
-	}
-
-	// 确认删除所有文件实例弹窗
-	if (AppData.ShowPFI_ConfirmDeleteAllFileInstances)
-	{
-		if (ImGui::BeginPopupModal("Confirm Delete All File Instances", &AppData.ShowPFI_ConfirmDeleteAllFileInstances, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			ImGui::Text("Are you sure you want to delete all file instances?");
-
-			if (ImGui::Button("Delete All"))
-			{
-				AppData.PersonalFileInfo.RemoveAllFileInstances();
-				AppData.PersonalFileInfo.Serialization(AppData.PersonalFileInfoFilePath);
-				AppData.ShowPFI_ConfirmDeleteAllFileInstances = false;
-			}
-
-			if (ImGui::Button("Cancel"))
-			{
-				AppData.ShowPFI_ConfirmDeleteAllFileInstances = false;
-			}
-
-			ImGui::EndPopup();
-		}
-	}
 }
