@@ -40,10 +40,10 @@ int main(int, char**)
 
 	Logger::Instance().Info().Log("test1: chain log {}{}", "hello ", "world.");
 	Logger::Instance().Debug().Stream() << "test2: stream log " << 42 << ".";
-	Logger::Instance().Warning().UnsetMaskFlag(Logger::Mask::SHOW_TIME).Log("test3: hide time.");
+	Logger::Instance().Warning().DisableMaskFlag(Logger::Mask::SHOW_TIME).Log("test3: hide time.");
 
 	// Disabling source location information speeds up formatting, allowing this message to be printed earlier.
-	Logger::Instance().Notice().UnsetMaskFlag(Logger::Mask::SHOW_SRC_INFO).Log("test3: hide source location.");
+	Logger::Instance().Notice().DisableMaskFlag(Logger::Mask::SHOW_SRC_INFO).Log("test3: hide source location.");
 
 	glfwSetErrorCallback(glfw_error_callback);
 	if (!glfwInit())
@@ -197,11 +197,11 @@ int main(int, char**)
 		if (CurrentApplicationData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword)
 			ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, CurrentApplicationData);
 
-		//fake progressbar
 		if (CurrentApplicationData.TaskInProgress)
 		{
 			ImGui::Begin("Progress", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse);
-			//CurrentApplicationData.progress += 0.005f;
+			
+			//Progress is updated by Implemenation, progress is updated by the task itself.
 			if (CurrentApplicationData.progress > 1.0f)
 				CurrentApplicationData.progress = 0.0f;
 			ImGui::ProgressBar(CurrentApplicationData.progress, ImVec2(120.0f, 18.0f));

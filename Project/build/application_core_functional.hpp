@@ -51,204 +51,167 @@ struct PasswordManagerUserKey
 
 const std::vector<std::string> CryptoCipherAlgorithmNames{"AES", "RC6", "SM4", "Twofish", "Serpent"};
 
+// The PersonalPasswordInfo class is used to manage password text instances.
+// 用于管理密码文本实例
 class PersonalPasswordInfo
 {
 private:
 	struct PersonalPasswordInstance
 	{
-		//表示这是第几个 PersonalPasswordInstance
-		std::uint64_t ID = 0;
-		std::string Description = "";
-		std::string EncryptedPassword = "";
-		std::string DecryptedPassword = "";
-		std::vector<std::string> EncryptionAlgorithmNames{};
-		std::vector<std::string> DecryptionAlgorithmNames{};
-		std::uint64_t HashMapID = 0; //For access HashMap_EncryptedSymmetricKey and HashMap_DecryptedSymmetricKey_Hashed
+		// Represents the ID of the PersonalPasswordInstance
+		std::uint64_t			 ID = 0;
+		std::string				 Description = "";
+		std::string				 EncryptedPassword = "";
+		std::string				 DecryptedPassword = "";
+		std::vector<std::string> EncryptionAlgorithmNames {};
+		std::vector<std::string> DecryptionAlgorithmNames {};
+		std::uint64_t			 HashMapID = 0;	 // Used for accessing HashMap_EncryptedSymmetricKey and HashMap_DecryptedSymmetricKey_Hashed
 
 		PersonalPasswordInstance() = default;
 
-		PersonalPasswordInstance(const PersonalPasswordInstance& Other)
-			:
-			ID(Other.ID), Description(Other.Description),
-			EncryptedPassword(Other.EncryptedPassword), DecryptedPassword(Other.DecryptedPassword),
-			EncryptionAlgorithmNames(Other.EncryptionAlgorithmNames), DecryptionAlgorithmNames(Other.DecryptionAlgorithmNames),
-			HashMapID(Other.HashMapID)
-		{
-
-		}
+		PersonalPasswordInstance( const PersonalPasswordInstance& Other )
+		: ID( Other.ID ), Description( Other.Description ),
+		EncryptedPassword( Other.EncryptedPassword ), DecryptedPassword( Other.DecryptedPassword ),
+		EncryptionAlgorithmNames( Other.EncryptionAlgorithmNames ), DecryptionAlgorithmNames( Other.DecryptionAlgorithmNames ),
+		HashMapID( Other.HashMapID ) {}
 
 		~PersonalPasswordInstance() = default;
 	};
+
 	std::vector<PersonalPasswordInstance> Instances;
 
-	void RecomputeEncryptedPassword(const std::string& NewInstancePassword, const std::string& Token, PersonalPasswordInstance& Instance);
-	void RecomputeDecryptedPassword(const std::string& Token, PersonalPasswordInstance& Instance);
+	// Recomputes the encrypted password based on the new password and token for the given instance
+	void RecomputeEncryptedPassword( const std::string& NewInstancePassword, const std::string& Token, PersonalPasswordInstance& Instance );
+
+	// Recomputes the decrypted password based on the token for the given instance
+	void RecomputeDecryptedPassword( const std::string& Token, PersonalPasswordInstance& Instance );
 
 public:
-
 	PersonalPasswordInfo() = default;
 
-	explicit PersonalPasswordInfo(const PersonalPasswordInfo& Other)
-		:
-		Instances(Other.Instances),
-		HashMap_EncryptedSymmetricKey(Other.HashMap_EncryptedSymmetricKey),
-		HashMap_DecryptedSymmetricKey_Hashed(Other.HashMap_DecryptedSymmetricKey_Hashed)
-	{
-
-	}
+	// Copy constructor to create a new instance from another PersonalPasswordInfo object
+	explicit PersonalPasswordInfo( const PersonalPasswordInfo& Other ) : Instances( Other.Instances ), HashMap_EncryptedSymmetricKey( Other.HashMap_EncryptedSymmetricKey ), HashMap_DecryptedSymmetricKey_Hashed( Other.HashMap_DecryptedSymmetricKey_Hashed ) {}
 
 	~PersonalPasswordInfo() = default;
 
-	std::unordered_map<std::uint64_t, std::vector<std::uint8_t>> HashMap_EncryptedSymmetricKey; // {HashMapID, EncryptedSymmetricKey}
-	std::unordered_map<std::uint64_t, std::string> HashMap_DecryptedSymmetricKey_Hashed; // {HashMapID, DecryptedSymmetricKey_Hashed}
+	std::unordered_map<std::uint64_t, std::vector<std::uint8_t>> HashMap_EncryptedSymmetricKey;			// Maps HashMapID to EncryptedSymmetricKey
+	std::unordered_map<std::uint64_t, std::string>				 HashMap_DecryptedSymmetricKey_Hashed;	// Maps HashMapID to DecryptedSymmetricKey_Hashed
 
-	void Serialization(const std::filesystem::path& FilePath);
-	void Deserialization(const std::filesystem::path& FilePath);
+	// Serializes the PersonalPasswordInfo object and saves it to a file
+	void Serialization( const std::filesystem::path& FilePath );
 
-	// 新建个人密码信息的实例并且加密
-	PersonalPasswordInstance CreatePasswordInstance
-	(
-		const std::string& Token,
-		const std::string& ShowPPI_Description,
-		const std::string& Password,
-		const std::vector<std::string>& EncryptionAlgorithms,
-		const std::vector<std::string>& DecryptionAlgorithms
-	);
+	// Deserializes the PersonalPasswordInfo object from a file
+	void Deserialization( const std::filesystem::path& FilePath );
 
-	// 追加个人密码信息的实例
-	void AppendPasswordInstance(const PersonalPasswordInfo::PersonalPasswordInstance& instance);
+	// Creates a new personal password instance and encrypts it
+	PersonalPasswordInstance CreatePasswordInstance( const std::string& Token, const std::string& ShowPPI_Description, const std::string& Password, const std::vector<std::string>& EncryptionAlgorithms, const std::vector<std::string>& DecryptionAlgorithms );
 
-	// 更改个人密码信息的实例
-	bool ChangePasswordInstance
-	(
-		std::uint64_t ID,
-		const std::string& NewDescription,
-		const std::string& NewPassword,
-		const std::vector<std::string>& NewEncryptionAlgorithms,
-		const std::vector<std::string>& NewDecryptionAlgorithms,
-		const std::string& Token,
-		bool ChangeEncryptedPassword
-	);
+	// Appends a new personal password instance
+	void AppendPasswordInstance( const PersonalPasswordInfo::PersonalPasswordInstance& instance );
 
+	// Modifies an existing personal password instance
+	bool ChangePasswordInstance( std::uint64_t ID, const std::string& NewDescription, const std::string& NewPassword, const std::vector<std::string>& NewEncryptionAlgorithms, const std::vector<std::string>& NewDecryptionAlgorithms, const std::string& Token, bool ChangeEncryptedPassword );
+
+	// Returns a reference to the vector of password instances
 	std::vector<PersonalPasswordInstance>& GetPassswordInstances();
 
-	// 列出个人密码信息的实例并且解密
-	void ListAllPasswordInstance
-	(
-		const std::string& Token
-	);
+	// Lists all personal password instances and decrypts them
+	void ListAllPasswordInstance( const std::string& Token );
 
-	// 删除个人密码信息的实例，根据ID
-	bool RemovePasswordInstance(std::uint64_t id);
+	// Removes a personal password instance by its ID
+	bool RemovePasswordInstance( std::uint64_t id );
 
+	// Removes all personal password instances
 	void RemoveAllPasswordInstance();
 
-	// 根据ID查找个人密码信息的实例并且解密
-	std::optional<PersonalPasswordInstance> FindPasswordInstanceByID(const std::string& Token, std::uint64_t ID);
+	// Finds a personal password instance by its ID and decrypts it
+	std::optional<PersonalPasswordInstance> FindPasswordInstanceByID( const std::string& Token, std::uint64_t ID );
 
-	// 根据ID查找个人密码信息的实例的描述
-	std::string FindPasswordInstanceDescriptionByID(std::uint64_t ID);
+	// Finds the description of a personal password instance by its ID
+	std::string FindPasswordInstanceDescriptionByID( std::uint64_t ID );
 
-	// 根据Description查找个人密码信息的实例并且解密
-	std::optional<PersonalPasswordInstance> FindPasswordInstanceByDescription(const std::string& Token, const std::string& Description);
+	// Finds a personal password instance by its description and decrypts it
+	std::optional<PersonalPasswordInstance> FindPasswordInstanceByDescription( const std::string& Token, const std::string& Description );
 
-	void ChangeInstanceMasterKeyWithSystemPassword
-	(
-		const std::filesystem::path& FilePath,
-		const std::string& Token,
-		const std::string& NewToken
-	);
-
-	/**
-	* 加密指定的文件并将加密后的内容保存到目标路径。
-	*
-	* @param Token 用于生成主密钥的令牌字符串。
-	* @param Instance 要使用的密码实例。
-	* @param SourceFilePath 要加密的源文件路径。
-	* @param EncryptedFilePath 加密后文件的保存路径。
-	* @return 如果加密成功则返回 true，否则返回 false。
-	*/
-	bool EncryptFile(const std::string& Token, PersonalPasswordInstance& Instance, const std::filesystem::path& SourceFilePath, const std::filesystem::path& EncryptedFilePath);
-
-	/**
-	 * 解密指定的加密文件并将解密后的内容保存到目标路径。
-	 *
-	 * @param Token 用于生成主密钥的令牌字符串。
-	 * @param Instance 要使用的密码实例。
-	 * @param EncryptedFilePath 要解密的源加密文件路径。
-	 * @param DecryptedFilePath 解密后文件的保存路径。
-	 * @return 如果解密成功则返回 true，否则返回 false。
-	 */
-	bool DecryptFile(const std::string& Token, PersonalPasswordInstance& Instance, const std::filesystem::path& EncryptedFilePath, const std::filesystem::path& DecryptedFilePath);
+	// Changes the master key of the instance using the system password
+	void ChangeInstanceMasterKeyWithSystemPassword( const std::filesystem::path& FilePath, const std::string& Token, const std::string& NewToken );
 };
 
-// PersonalFileInfo 类用于管理文件实例
+// The PersonalFileInfo class is used to manage confidential data file instances.
+// 用于管理保密数据文件实例
 class PersonalFileInfo
 {
 private:
-	// PersonalFileInstance 结构体定义
+	// Definition of PersonalFileInstance struct
 	struct PersonalFileInstance
 	{
-		std::uint64_t ID = 0;
+		std::uint64_t			 ID = 0;
 		std::vector<std::string> EncryptionAlgorithmNames;
 		std::vector<std::string> DecryptionAlgorithmNames;
 
 		PersonalFileInstance() = default;
 
-		PersonalFileInstance(const PersonalFileInstance& Other)
-			: ID(Other.ID),
-			EncryptionAlgorithmNames(Other.EncryptionAlgorithmNames),
-			DecryptionAlgorithmNames(Other.DecryptionAlgorithmNames)
-		{
-		}
+		PersonalFileInstance( const PersonalFileInstance& Other )
+		: ID( Other.ID ),
+		EncryptionAlgorithmNames( Other.EncryptionAlgorithmNames ), DecryptionAlgorithmNames( Other.DecryptionAlgorithmNames ) {}
 
 		~PersonalFileInstance() = default;
 	};
 
 	std::vector<PersonalFileInstance> Instances;
 
-	// 序列化和反序列化辅助函数
-	void SerializeInstances(nlohmann::json& jsonData) const;
-	void DeserializeInstances(const nlohmann::json& jsonData);
+	// Helper functions for serialization and deserialization
+	void SerializeInstances( nlohmann::json& jsonData ) const;
+	void DeserializeInstances( const nlohmann::json& jsonData );
 
 public:
 	PersonalFileInfo() = default;
 
-	explicit PersonalFileInfo(const PersonalFileInfo& Other)
-		: Instances(Other.Instances)
-	{
-	}
+	// Copy constructor to create a new instance from another PersonalFileInfo object
+	explicit PersonalFileInfo( const PersonalFileInfo& Other ) : Instances( Other.Instances ) {}
 
 	~PersonalFileInfo() = default;
 
-	// 序列化和反序列化函数
-	void Serialization(const std::filesystem::path& FilePath);
-	void Deserialization(const std::filesystem::path& FilePath);
+	// Serialization and deserialization functions
+	void Serialization( const std::filesystem::path& FilePath );
+	void Deserialization( const std::filesystem::path& FilePath );
 
-	// 创建新的文件实例
-	PersonalFileInstance CreateFileInstance(
-		const std::string& Token,
-		const std::vector<std::string>& EncryptionAlgorithms,
-		const std::vector<std::string>& DecryptionAlgorithms
-	);
+	// Creates a new file instance
+	PersonalFileInstance CreateFileInstance( const std::string& Token, const std::vector<std::string>& EncryptionAlgorithms, const std::vector<std::string>& DecryptionAlgorithms );
 
-	// 追加文件实例
-	void AppendFileInstance(const PersonalFileInstance& instance);
+	// Appends a new file instance
+	void AppendFileInstance( const PersonalFileInstance& instance );
 
-	// 删除文件实例
-	bool RemoveFileInstance(std::uint64_t ID);
+	// Removes a file instance by its ID
+	bool RemoveFileInstance( std::uint64_t ID );
 
-	// 删除所有文件实例
+	// Removes all file instances
 	void RemoveAllFileInstances();
 
-	// 通过ID获取文件实例
-	PersonalFileInstance& GetFileInstanceByID(uint64_t ID);
+	// Retrieves a file instance by its ID
+	PersonalFileInstance& GetFileInstanceByID( uint64_t ID );
 
-	// 加密文件
-	bool EncryptFile(const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& SourceFilePath, const std::filesystem::path& EncryptedFilePath);
+	/**
+     * Encrypts the specified file and saves the encrypted contents to the destination path.
+     *
+     * @param Token The token string used to generate the master key.
+     * @param Instance The instance of the cipher to use.
+     * @param SourceFilePath The path to the source file to be encrypted.
+     * @param EncryptedFilePath The path where the encrypted file will be saved.
+     * @return Returns true if the encryption was successful, otherwise false.
+     */
+	bool EncryptFile( const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& SourceFilePath, const std::filesystem::path& EncryptedFilePath );
 
-	// 解密文件
-	bool DecryptFile(const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& EncryptedFilePath, const std::filesystem::path& DecryptedFilePath);
+	/**
+     * Decrypts the specified encrypted file and saves the decrypted contents to the target path.
+     *
+     * @param Token The token string used to generate the master key.
+     * @param Instance The instance of the cipher to use.
+     * @param EncryptedFilePath Path to the source encrypted file to decrypt.
+     * @param DecryptedFilePath The path where the decrypted file will be saved.
+     * @return Returns true if the decryption was successful, otherwise false.
+     */
+	bool DecryptFile( const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& EncryptedFilePath, const std::filesystem::path& DecryptedFilePath );
 };
 
 // Function to generate a unique user ID
