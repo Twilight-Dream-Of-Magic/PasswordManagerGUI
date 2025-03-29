@@ -40,10 +40,10 @@ int main(int, char**)
 
 	Logger::Instance().Info().Log("test1: chain log {}{}", "hello ", "world.");
 	Logger::Instance().Debug().Stream() << "test2: stream log " << 42 << ".";
-	Logger::Instance().Warning().UnsetMaskFlag(Logger::Mask::SHOW_TIME).Log("test3: hide time.");
+	Logger::Instance().Warning().DisableMaskFlag(Logger::Mask::SHOW_TIME).Log("test3: hide time.");
 
 	// Disabling source location information speeds up formatting, allowing this message to be printed earlier.
-	Logger::Instance().Notice().UnsetMaskFlag(Logger::Mask::SHOW_SRC_INFO).Log("test3: hide source location.");
+	Logger::Instance().Notice().DisableMaskFlag(Logger::Mask::SHOW_SRC_INFO).Log("test3: hide source location.");
 
 	glfwSetErrorCallback(glfw_error_callback);
 	if (!glfwInit())
