@@ -220,7 +220,7 @@ int main(int, char**)
 			ShowGUI_PersonalFileInfo(BufferLoginPassword, CurrentApplicationData);
 		if (CurrentApplicationData.ShowPFI_CreateFileInstance)
 			ShowGUI_PFI_CreateFileInstance(CurrentApplicationData);
-		if (CurrentApplicationData.ShowPFI_ListAllFileInstanceData);
+		if (CurrentApplicationData.ShowPFI_ListAllFileInstanceData)
 			ShowGUI_PFI_ListAllFileInstanceData(CurrentApplicationData);
 		if (CurrentApplicationData.ShowPFI_DeleteFileInstance)
 			ShowGUI_PFI_DeleteFileInstance(CurrentApplicationData);
