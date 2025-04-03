@@ -264,5 +264,13 @@ int main(int, char**)
 	glfwDestroyWindow(window);
 	glfwTerminate();
 
+	//Wipe application sensitive data.
+	memory_set_no_optimize_function<0x00>(BufferRegisterUsername.data(), BufferRegisterUsername.size() * sizeof(char));
+	memory_set_no_optimize_function<0x00>(BufferRegisterPassword.data(), BufferRegisterPassword.size() * sizeof(char));
+	memory_set_no_optimize_function<0x00>(BufferLoginUsername.data(), BufferLoginUsername.size() * sizeof(char));
+	memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size() * sizeof(char));
+	memory_set_no_optimize_function<0x00>(CurrentApplicationData.ShowPPI_Password.data(), CurrentApplicationData.ShowPPI_Password.size() * sizeof(char));
+	memory_set_no_optimize_function<0x00>(CurrentApplicationData.ShowPPI_NewPassword.data(), CurrentApplicationData.ShowPPI_NewPassword.size() * sizeof(char));
+
 	return 0;
 }

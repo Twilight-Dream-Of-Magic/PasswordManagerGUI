@@ -256,13 +256,13 @@ inline void Do_CreatePasswordInstance(std::vector<char>& BufferLoginPassword, Ap
 
 		CurrentApplicationData.progress = 0.4f;
 
-		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+		const bool ValidPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
 		if
 		(
 			!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
 			!AppData.ShowPPI_NewPassword.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
-			!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
+			!AppData.ShowPPI_DecryptionAlgorithms.empty() && ValidPassword
 		)
 		{
 			auto new_end = std::find_if
@@ -353,13 +353,13 @@ inline void Do_ChangePasswordInstance(std::vector<char>& BufferLoginPassword, Ap
 
 		CurrentApplicationData.progress = 0.2f;
 
-		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+		const bool ValidPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
 		if
 			(
 				!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() &&
 				!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_EncryptionAlgorithms.empty() &&
-				!AppData.ShowPPI_DecryptionAlgorithms.empty() && VaildPassword
+				!AppData.ShowPPI_DecryptionAlgorithms.empty() && ValidPassword
 				)
 		{
 			CurrentApplicationData.progress = 0.4f;
@@ -483,7 +483,7 @@ inline void Do_FindPasswordInstanceByID(std::vector<char>& BufferLoginPassword, 
 		{
 			auto& Instance = Optional.value();
 			std::ostringstream oss;
-			oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
+			oss << std::format("ID: {0}\nNew Description {1}\nDecrypted Password: {2}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
 
 			CurrentApplicationData.progress = 0.4f;
 
@@ -548,7 +548,7 @@ inline void Do_FindPasswordInstanceByDescription(std::vector<char>& BufferLoginP
 		{
 			auto& Instance = Optional.value();
 			std::ostringstream oss;
-			oss << std::format("ID: %llu {}\nNew Description {}\nDecrypted Password: {}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
+			oss << std::format("ID: {0}\nNew Description {1}\nDecrypted Password: {2}\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data());
 			oss << "Encryption Algorithms:\n";
 			for (const auto& algorithm : Instance.EncryptionAlgorithmNames)
 			{
@@ -635,7 +635,7 @@ inline void Do_ChangeInstanceMasterKeyWithSystemPassword(std::vector<char>& Buff
 		if (!AppData.ShowPPI_Password.empty() && !AppData.ShowPPI_NewPassword.empty())
 		{
 			// Verify Password
-			const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData) && std::equal(AppData.ShowPPI_Password.begin(), AppData.ShowPPI_Password.end(), Password.begin(), Password.end());
+			const bool ValidPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData) && std::equal(AppData.ShowPPI_Password.begin(), AppData.ShowPPI_Password.end(), Password.begin(), Password.end());
 
 			const bool IsNotChangePassword = std::equal(AppData.ShowPPI_NewPassword.begin(), AppData.ShowPPI_NewPassword.end(), Password.begin(), Password.end());
 
@@ -648,7 +648,7 @@ inline void Do_ChangeInstanceMasterKeyWithSystemPassword(std::vector<char>& Buff
 				return;
 			}
 
-			if (VaildPassword)
+			if (ValidPassword)
 			{
 				LoadPasswordManagerUser(AppData.UserKey, AppData.UserData);
 
@@ -740,10 +740,10 @@ inline void Do_Login(
 		LoadPasswordManagerUser(CurrentUserKey, CurrentUserData);
 
 		// Verify Username and Password
-		const bool VaildUsername = VerifyUUID(BufferLoginUsername, CurrentUserKey.RandomSalt, CurrentUserKey.RegistrationTime, CurrentUserKey);
-		const bool VaildPassword = VerifyPassword(BufferLoginPassword, CurrentUserKey, CurrentUserData);
+		const bool ValidUsername = VerifyUUID(BufferLoginUsername, CurrentUserKey.RandomSalt, CurrentUserKey.RegistrationTime, CurrentUserKey);
+		const bool ValidPassword = VerifyPassword(BufferLoginPassword, CurrentUserKey, CurrentUserData);
 
-		if (VaildUsername && VaildPassword)
+		if (ValidUsername && ValidPassword)
 		{
 			// Login successful
 			LogNoticeHelper("Login successful!");
@@ -768,13 +768,13 @@ inline void Do_Login(
 		}
 		else
 		{
-			if (VaildUsername == false && VaildPassword == true)
+			if (ValidUsername == false && ValidPassword == true)
 			{
 				LogWarnHelper("Failed to login, incorrect username by UUID checking");
 				// Username validation failed
 				ShowUsernameAuthenticationFailedPopup = true;
 			}
-			else if (VaildUsername == true && VaildPassword == false)
+			else if (ValidUsername == true && ValidPassword == false)
 			{
 				LogWarnHelper("Failed to login, incorrect password by security comparison");
 
@@ -1200,9 +1200,9 @@ inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPa
 
 			BufferLoginPassword.erase(new_end.base(), BufferLoginPassword.end());
 
-			const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+			const bool ValidPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-			if (!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() && VaildPassword)
+			if (!AppData.UserKey.RandomUUID.empty() && !BufferLoginPassword.empty() && ValidPassword)
 			{
 				if (!AppData.IsPasswordInfoTemporaryValid)
 				{
@@ -1215,7 +1215,7 @@ inline void ShowGUI_PPI_ListAllPasswordInstance(std::vector<char>& BufferLoginPa
 				// 循环遍历每个PersonalPasswordInstance并在UI中显示
 				for (const auto& Instance : PassswordInstances)
 				{
-					ImGui::Text("ID: %llu", Instance.ID);
+					ImGui::Text("ID:", Instance.ID);
 					ImGui::Text("New Description: %s", Instance.Description.data());
 					ImGui::Text("Decrypted Password: %s", Instance.DecryptedPassword.data());
 
@@ -1373,9 +1373,9 @@ inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginP
 		ImGui::InputText("System Password", BufferLoginPassword.data(), BufferLoginPassword.size(), ImGuiInputTextFlags_Password);
 		ImGui::InputScalar("Password Instance ID", ImGuiDataType_U64, &AppData.ShowPPI_SelectedPasswordInstanceID);
 
-		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+		const bool ValidPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-		if (ImGui::Button("find") && AppData.ShowPPI_FindPasswordInstanceByID && VaildPassword)
+		if (ImGui::Button("find") && AppData.ShowPPI_FindPasswordInstanceByID && ValidPassword)
 		{
 			Do_FindPasswordInstanceByID(BufferLoginPassword, AppData, buffer);
 		}
@@ -1388,7 +1388,7 @@ inline void ShowGUI_PPI_FindPasswordInstanceByID(std::vector<char>& BufferLoginP
 			buffer.clear();
 		}
 
-		if (!buffer.empty() && AppData.ShowPPI_FindPasswordInstanceByID && VaildPassword)
+		if (!buffer.empty() && AppData.ShowPPI_FindPasswordInstanceByID && ValidPassword)
 		{
 			ImGui::TextUnformatted(buffer.c_str());
 		}
@@ -1418,9 +1418,9 @@ inline void ShowGUI_PPI_FindPasswordInstanceByDescription(std::vector<char>& Buf
 		AppData.ShowPPI_SelectedPasswordInstanceDescription.resize(2048, 0x00);
 		ImGui::InputTextMultiline("Password Instance\nDescription", AppData.ShowPPI_SelectedPasswordInstanceDescription.data(), AppData.ShowPPI_SelectedPasswordInstanceDescription.size(), ImVec2(400, 400), ImGuiInputTextFlags_CtrlEnterForNewLine);
 
-		const bool VaildPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
+		const bool ValidPassword = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-		if (ImGui::Button("find") && AppData.ShowPPI_FindPasswordInstanceByDescription && VaildPassword)
+		if (ImGui::Button("find") && AppData.ShowPPI_FindPasswordInstanceByDescription && ValidPassword)
 		{
 			Do_FindPasswordInstanceByDescription(BufferLoginPassword, AppData, buffer);
 		}
@@ -1433,7 +1433,7 @@ inline void ShowGUI_PPI_FindPasswordInstanceByDescription(std::vector<char>& Buf
 			buffer.clear();
 		}
 
-		if (!buffer.empty() && AppData.ShowPPI_FindPasswordInstanceByDescription && VaildPassword)
+		if (!buffer.empty() && AppData.ShowPPI_FindPasswordInstanceByDescription && ValidPassword)
 		{
 			ImGui::TextUnformatted(buffer.c_str());
 		}
@@ -1455,7 +1455,7 @@ inline void ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword( std::vector<c
 
 		bool correct_password = false;
 
-		if ( ImGui::Button( "Change Password" ) && correct_password )
+		if ( ImGui::Button( "Change Password" ) )
 		{
 			correct_password = VerifyPassword( BufferLoginPassword, AppData.UserKey, AppData.UserData );
 
@@ -1653,8 +1653,7 @@ inline void ShowGUI_PFI_ListAllFileInstance( ApplicationData& AppData )
 			// 遍历每个 PersonalFileInstance 并显示相关信息
 			for ( const auto& Instance : FileInstances )
 			{
-				ImGui::Text( "ID: %llu", Instance.ID );
-
+				ImGui::Text( "ID: ", Instance.ID );
 				ImGui::Text( "Encryption Algorithms:" );
 				for ( const auto& algorithm : Instance.EncryptionAlgorithmNames )
 				{
