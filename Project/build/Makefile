@@ -1,3 +1,4 @@
+
 #
 # Cross Platform Makefile
 # Compatible with MSYS2/MINGW, Ubuntu 14.04.1 and Mac OS X
@@ -11,19 +12,17 @@
 #   pacman -S --noconfirm --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-glfw
 #
 
-#CXX = g++
-#CXX = clang++
-
 EXE = PasswordManagerGUI
 IMGUI_DIR = ../../ImGUI
-SOURCES = application_core_functional.cpp main.cpp
+SOURCES = source_code/application_functional.cpp source_code/main.cpp
 SOURCES += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
 SOURCES += $(IMGUI_DIR)/backends/imgui_impl_glfw.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
+SOURCES += ../../ImGuiFileDialog/ImGuiFileDialog.cpp
 OBJS = $(addsuffix .o, $(basename $(notdir $(SOURCES))))
 UNAME_S := $(shell uname -s)
 LINUX_GL_LIBS = -lGL
 
-CXXFLAGS = -std=c++11 -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I../../json/include -I../../TDOM-EncryptOrDecryptFile-Reborn/include
+CXXFLAGS = -std=c++20 -I../../json/include -I../../TDOM-EncryptOrDecryptFile-Reborn/include -I$(IMGUI_DIR) -I$(IMGUI_DIR)/backends -I../../libs/glfw/include
 CXXFLAGS += -g -Wall -Wformat
 LIBS =
 
@@ -51,7 +50,6 @@ ifeq ($(UNAME_S), Darwin) #APPLE
 	ECHO_MESSAGE = "Mac OS X"
 	LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
 	LIBS += -L/usr/local/lib -L/opt/local/lib -L/opt/homebrew/lib
-	#LIBS += -lglfw3
 	LIBS += -lglfw
 
 	CXXFLAGS += -I/usr/local/include -I/opt/local/include -I/opt/homebrew/include
@@ -60,7 +58,7 @@ endif
 
 ifeq ($(OS), Windows_NT)
 	ECHO_MESSAGE = "MinGW"
-	LIBS += -lglfw3 -lgdi32 -lopengl32 -limm32
+	LIBS += -L../../libs/glfw/lib-vc2010-64 -lglfw3 -lopengl32 -lgdi32 -lshell32 -limm32
 
 	CXXFLAGS += `pkg-config --cflags glfw3`
 	CFLAGS = $(CXXFLAGS)
@@ -77,6 +75,9 @@ endif
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 %.o:$(IMGUI_DIR)/backends/%.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+%.o:../../ImGuiFileDialog/%.cpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 all: $(EXE)
