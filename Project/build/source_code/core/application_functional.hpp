@@ -7,8 +7,8 @@
 /* Priority Level 1 */
 #include "Support+Library/Support-Library.hpp"
 
-#include "../CodeTools/raii_tool.hpp"
-#include "../CodeTools/logger.hpp"
+#include "../utility/raii_tool.hpp"
+#include "../utility/logger.hpp"
 
 // System User data structure
 struct PasswordManagerUserData
