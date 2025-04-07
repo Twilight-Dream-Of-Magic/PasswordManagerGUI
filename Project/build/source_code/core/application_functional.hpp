@@ -113,7 +113,7 @@ public:
 	bool ChangePasswordInstance( std::uint64_t ID, const std::string& NewDescription, const std::string& NewPassword, const std::vector<std::string>& NewEncryptionAlgorithms, const std::vector<std::string>& NewDecryptionAlgorithms, const std::string& Token, bool ChangeEncryptedPassword );
 
 	// Returns a reference to the vector of password instances
-	std::vector<PersonalPasswordInstance>& GetPassswordInstances();
+	std::vector<PersonalPasswordInstance>& GetPasswordInstances();
 
 	// Lists all personal password instances and decrypts them
 	void ListAllPasswordInstance( const std::string& Token );
