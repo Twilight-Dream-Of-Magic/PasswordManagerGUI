@@ -83,7 +83,7 @@ inline void GenerateUUID(std::vector<char> UserName, const std::string& RandomSa
 		HMAC_String.append(CommonSecurity::DataHashingWrapper::HMAC_FunctionObject(HAP_ObjectArgument, HMAC_String, 512 / 8, RandomSalt + std::to_string(RegistrationTime)));
 	}
 
-	auto HMAC_BytesData = UtilTools::DataFormating::ASCII_Hexadecmial::hexadecimalString2ByteArray(HMAC_String);
+	auto HMAC_BytesData = UtilTools::DataFormating::ASCII_Hexadecimal::hexadecimalString2ByteArray(HMAC_String);
 
 	UUID = UtilTools::DataFormating::Base64Coder::Author1::encode(HMAC_BytesData);
 }
@@ -150,7 +150,7 @@ inline void RegenerateMasterKey(PersonalPasswordInfo& PersonalPasswordInfo, cons
 	{
 		InstanceKey = GenerateRandomKey();
 
-		HAP_ObjectArgument.inputDataString = UtilTools::DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString(InstanceKey);
+		HAP_ObjectArgument.inputDataString = UtilTools::DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString(InstanceKey);
 		CommonSecurity::DataHashingWrapper::HashersAssistant::SELECT_HASH_FUNCTION(HAP_ObjectArgument);
 
 		//SM4 With Block Cipher Counter Mode
@@ -281,7 +281,7 @@ inline std::string GenerateStringFileUUIDFromStringUUID(const std::string& UUID)
 	//20 Bytes == 160 Bits
 	std::vector<std::uint8_t> TruncatedUUIDBytes = HashUUID(UtilTools::DataFormating::Base64Coder::Author1::decode(UUID), 20);
 
-	std::string UniqueFileName = UtilTools::DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString(TruncatedUUIDBytes);
+	std::string UniqueFileName = UtilTools::DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString(TruncatedUUIDBytes);
 
 	Logger::Instance().Debug().Log("File UUID: {}", UniqueFileName);
 
@@ -537,7 +537,7 @@ inline bool VerifyUUID(const std::vector<char>& Username, const std::string& Ran
 		HMAC_String.append(CommonSecurity::DataHashingWrapper::HMAC_FunctionObject(HAP_ObjectArgument, HMAC_String, 512 / 8, RandomSalt + std::to_string(RegistrationTime)));
 	}
 
-	auto HMAC_BytesData = UtilTools::DataFormating::ASCII_Hexadecmial::hexadecimalString2ByteArray(HMAC_String);
+	auto HMAC_BytesData = UtilTools::DataFormating::ASCII_Hexadecimal::hexadecimalString2ByteArray(HMAC_String);
 
 	std::string UUID = UtilTools::DataFormating::Base64Coder::Author1::encode(HMAC_BytesData);
 
@@ -913,7 +913,7 @@ void PersonalPasswordInfo::RecomputeEncryptedPassword(const std::string& NewInst
 	HAP_ObjectArgument.whether_use_hash_extension_bit_mode = false;
 
 	// Calculate the hash of the decrypted instance key.
-	HAP_ObjectArgument.inputDataString = UtilTools::DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString(DecryptedInstanceKey);
+	HAP_ObjectArgument.inputDataString = UtilTools::DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString(DecryptedInstanceKey);
 	CommonSecurity::DataHashingWrapper::HashersAssistant::SELECT_HASH_FUNCTION(HAP_ObjectArgument);
 	
 	// Check if the calculated hash matches the stored instance key hash.
@@ -996,7 +996,7 @@ void PersonalPasswordInfo::RecomputeDecryptedPassword(const std::string& Token, 
 	HAP_ObjectArgument.whether_use_hash_extension_bit_mode = false;
 
 	// Calculate the hash of the decrypted instance key.
-	HAP_ObjectArgument.inputDataString = UtilTools::DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString(DecryptedInstanceKey);
+	HAP_ObjectArgument.inputDataString = UtilTools::DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString(DecryptedInstanceKey);
 	CommonSecurity::DataHashingWrapper::HashersAssistant::SELECT_HASH_FUNCTION(HAP_ObjectArgument);
 	
 	// Check if the calculated hash matches the stored instance key hash.
@@ -1586,7 +1586,7 @@ bool PersonalFileInfo::EncryptFile( const std::string& Token, const PersonalFile
 
 	// Compute the hash of the source file
 	Hasher::HasherTools MainHasher;
-	std::optional<std::string>				 optionalSourceHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString( FileByteData ) );
+	std::optional<std::string>				 optionalSourceHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString( FileByteData ) );
 	if ( !optionalSourceHash.has_value() )
 	{
 		Logger::Instance().Fatal().Log("Failed to compute source file hash.");
@@ -1595,7 +1595,7 @@ bool PersonalFileInfo::EncryptFile( const std::string& Token, const PersonalFile
 		return false;
 	}
 	std::string			 SourceHashHex = optionalSourceHash.value();
-	std::vector<uint8_t> SourceHashBytes = DataFormating::ASCII_Hexadecmial::hexadecimalString2ByteArray( SourceHashHex );
+	std::vector<uint8_t> SourceHashBytes = DataFormating::ASCII_Hexadecimal::hexadecimalString2ByteArray( SourceHashHex );
 	if ( SourceHashBytes.size() != 64 )	 // SHA-512 is 64 bytes
 	{
 		Logger::Instance().Fatal().Log("Invalid source hash size.");
@@ -1654,7 +1654,7 @@ bool PersonalFileInfo::EncryptFile( const std::string& Token, const PersonalFile
 	}
 
 	// Compute the hash of the encrypted data
-	std::optional<std::string> optionalEncryptedHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString( FileByteData ) );
+	std::optional<std::string> optionalEncryptedHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString( FileByteData ) );
 	if ( !optionalEncryptedHash.has_value() )
 	{
 		Logger::Instance().Fatal().Log("Failed to compute encrypted data hash.");
@@ -1663,7 +1663,7 @@ bool PersonalFileInfo::EncryptFile( const std::string& Token, const PersonalFile
 		return false;
 	}
 
-	std::vector<uint8_t> EncryptedHashBytes = DataFormating::ASCII_Hexadecmial::hexadecimalString2ByteArray( optionalEncryptedHash.value() );
+	std::vector<uint8_t> EncryptedHashBytes = DataFormating::ASCII_Hexadecimal::hexadecimalString2ByteArray( optionalEncryptedHash.value() );
 	if ( EncryptedHashBytes.size() != 64 )	// SHA-512 is 64 bytes
 	{
 		Logger::Instance().Fatal().Log("Invalid encrypted data hash size.");
@@ -1768,7 +1768,7 @@ bool PersonalFileInfo::DecryptFile( const std::string& Token, const PersonalFile
 
 	// Compute and verify the hash of the encrypted data
 	Hasher::HasherTools MainHasher;
-	std::optional<std::string>				 optionalComputedEncryptedHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString( FileByteData ) );
+	std::optional<std::string>				 optionalComputedEncryptedHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString( FileByteData ) );
 	if ( !optionalComputedEncryptedHash.has_value() )
 	{
 		Logger::Instance().Fatal().Log("Failed to compute encrypted data hash.");
@@ -1777,7 +1777,7 @@ bool PersonalFileInfo::DecryptFile( const std::string& Token, const PersonalFile
 		return false;
 	}
 	std::string			 computedEncryptedHashHex = optionalComputedEncryptedHash.value();
-	std::vector<uint8_t> computedEncryptedHashBytes = DataFormating::ASCII_Hexadecmial::hexadecimalString2ByteArray( computedEncryptedHashHex );
+	std::vector<uint8_t> computedEncryptedHashBytes = DataFormating::ASCII_Hexadecimal::hexadecimalString2ByteArray( computedEncryptedHashHex );
 	if ( computedEncryptedHashBytes.size() != 64 )
 	{
 		Logger::Instance().Fatal().Log("Invalid computed encrypted data hash size.");
@@ -1843,7 +1843,7 @@ bool PersonalFileInfo::DecryptFile( const std::string& Token, const PersonalFile
 	}
 
 	// Compute and verify the hash of the decrypted data
-	std::optional<std::string> optionalDecryptedHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecmial::byteArray2HexadecimalString( FileByteData ) );
+	std::optional<std::string> optionalDecryptedHash = MainHasher.GenerateHashed( Hasher::WORKER_MODE::SHA3_512, DataFormating::ASCII_Hexadecimal::byteArray2HexadecimalString( FileByteData ) );
 	if ( !optionalDecryptedHash.has_value() )
 	{
 		Logger::Instance().Fatal().Log("Failed to compute decrypted data hash.");
@@ -1853,7 +1853,7 @@ bool PersonalFileInfo::DecryptFile( const std::string& Token, const PersonalFile
 		return false;
 	}
 
-	std::vector<uint8_t> DecryptedHashBytes = DataFormating::ASCII_Hexadecmial::hexadecimalString2ByteArray( optionalDecryptedHash.value() );
+	std::vector<uint8_t> DecryptedHashBytes = DataFormating::ASCII_Hexadecimal::hexadecimalString2ByteArray( optionalDecryptedHash.value() );
 	if ( DecryptedHashBytes.size() != 64 )
 	{
 		Logger::Instance().Fatal().Log("Invalid decrypted data hash size.");
