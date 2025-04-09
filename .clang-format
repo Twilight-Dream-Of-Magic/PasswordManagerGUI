@@ -1,0 +1,47 @@
+BasedOnStyle: LLVM
+UseTab: ForIndentation
+IndentWidth: 4
+TabWidth: 4
+ColumnLimit: 180
+
+# Braces always on a new line
+BreakBeforeBraces: Allman
+
+# Function parameters always on new lines, no packing
+BinPackParameters: false
+BinPackArguments: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllArgumentsOnNextLine: false
+AlignAfterOpenBracket: AlwaysBreak  # Always break after opening bracket
+
+# Templates and requires always on new lines
+AlwaysBreakTemplateDeclarations: Yes
+RequiresClausePosition: OwnLine
+
+# Fully align all elements
+AlignOperands: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignTrailingComments: true
+
+# Constructor initializer lists
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+
+# Operator line breaks
+BreakBeforeBinaryOperators: All
+BreakBeforeTernaryOperators: true
+
+# Force line break settings
+PenaltyBreakBeforeFirstCallParameter: 0  # Force line break before first parameter
+PenaltyBreakAssignment: 0  # Force line break before assignment operator
+PenaltyReturnTypeOnItsOwnLine: 1000  # Avoid return type on its own line
+
+# Other settings
+AlwaysBreakBeforeMultilineStrings: true
+SortIncludes: true          # Enable include sorting
+IncludeCategories:
+  - Regex:    '^<.*>'       # System/standard library headers (enclosed in <>)
+    Priority: 1
+  - Regex:    '^".*"'       # Project-local headers (enclosed in "")
+    Priority: 2

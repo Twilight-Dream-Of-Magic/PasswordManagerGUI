@@ -1,0 +1,14 @@
+* text=auto eol=lf
+*.bat eol=crlf
+*.sh eol=lf
+*.ps1 eol=crlf
+
+*.h linguist-language=C++
+*.cpp linguist-language=C++
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.ttc binary
