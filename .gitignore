@@ -1,4 +1,43 @@
-Debug
-Release
-.vs
-/Project/build/imgui.ini
+# Build directories
+Debug/
+Release/
+build/
+x64/
+*.sln
+*.vcxproj*
+*.filters
+*.user
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+Makefile
+
+# IDE and editor files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.userprefs
+*.ncb
+*.sdf
+
+# Compiled files
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.manifest
+*.cache
+
+# System files
+Thumbs.db
+.DS_Store
+
+# Project specific
+imgui.ini
+*.log
+*.json
