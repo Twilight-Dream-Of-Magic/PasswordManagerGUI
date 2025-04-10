@@ -1,18 +1,18 @@
-
-#include <stdio.h>
-#include "ui/PasswordManagerGUI.hpp"
 #include <csignal>
+
+//#define DISABLE_LOGGER
+#include "framework/application.hpp"
 
 // Main code
 int main(int, char**)
 {
 	Logger::Instance().Init();
-	Logger::Instance().Debug().Log("hello {}", "world!");
+	/*Logger::Instance().Debug().Log("hello {}", "world!");
 
 	{
 		auto log_stream = Logger::Instance().Info().Stream();
 		log_stream << 4 << 2;
-	}
+	}*/
 
 	std::signal
 	(
@@ -60,27 +60,22 @@ int main(int, char**)
 		}
 	);
 
-	try
+	auto app_progress = []()
 	{
-		auto SG = MakeScopeGuard
-		(
-			[](ApplicationData&) 
-			{
-			APP_Cleanup(CurrentApplicationData);
-			}, 
-			std::ref(CurrentApplicationData)
-		);
+		volatile auto SG = MakeScopeGuard([](ApplicationData &) { APP_Cleanup(CurrentApplicationData); }, std::ref(CurrentApplicationData));
 
 		APP_Inital(CurrentApplicationData);
 
 		APP_Loop(CurrentApplicationData);
-	}
-	catch (std::exception& e)
+	};
+
+	try
 	{
-		Logger::Instance().Fatal().Log
-		(
-			"event = [exception_caught], type = [std::exception], message = [{}]", e.what()
-		);
+		app_progress();
+	}
+	catch (std::exception &e)
+	{
+		Logger::Instance().Fatal().Log("event = [exception_caught], type = [std::exception], message = [{}]", e.what());
 		throw;
 	}
 

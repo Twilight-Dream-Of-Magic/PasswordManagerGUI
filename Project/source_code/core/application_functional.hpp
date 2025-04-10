@@ -2,13 +2,13 @@
 
 #include "nlohmann/json.hpp"
 
-//Twilight-Dream's Cryptography Library Base Support
+// Twilight-Dream's Cryptography Library Base Support
 
 /* Priority Level 1 */
 #include "Support+Library/Support-Library.hpp"
 
-#include "../utility/raii_tool.hpp"
 #include "../utility/logger.hpp"
+#include "../utility/raii_tool.hpp"
 
 // System User data structure
 struct PasswordManagerUserData
@@ -189,7 +189,7 @@ public:
 	void RemoveAllFileInstances();
 
 	// Retrieves a file instance by its ID
-	PersonalFileInstance& GetFileInstanceByID( uint64_t ID );
+	auto GetFileInstanceByID(uint64_t ID) -> std::optional<std::reference_wrapper<PersonalFileInfo::PersonalFileInstance>>;
 
 	// Returns a reference to the vector of password instances
 	std::vector<PersonalFileInstance>& GetFileInstances();
@@ -275,46 +275,46 @@ public:
 };
 
 // Function to generate a unique user ID
-extern inline void GenerateUUID(std::vector<char> UserName, const std::string& RandomSalt, uint64_t& RegistrationTime, std::string& UUID);
+extern void GenerateUUID(std::vector<char> UserName, const std::string& RandomSalt, uint64_t& RegistrationTime, std::string& UUID);
 
 // Function to generate a random salt
-extern inline void GenerateRandomSalt(std::string& RandomSalt);
+extern void GenerateRandomSalt(std::string& RandomSalt);
 
 // Function to SHA1 hash reduction on the data array
 extern std::vector<unsigned char> HashUUID(const std::vector<unsigned char>& data, size_t size_limit);
 
 // Function to Unique user ID hash to Unique file name
-extern inline std::string GenerateStringFileUUIDFromStringUUID(const std::string& UUID);
+extern std::string GenerateStringFileUUIDFromStringUUID(const std::string& UUID);
 
 // Function to generate a random key (256 bit)
-extern inline std::vector<uint8_t> GenerateRandomKey();
+extern std::vector<uint8_t> GenerateRandomKey();
 
 // Function to regenerate a mater key and password instance key
-extern inline void RegenerateMasterKey(PersonalPasswordInfo& PersonalPasswordInfo, const std::string& Token);
+extern void RegenerateMasterKey(PersonalPasswordInfo& PersonalPasswordInfo, const std::string& Token);
 
 // Function to save user data to a JSON file
-extern inline void SavePasswordManagerUser(const std::pair<PasswordManagerUserKey, PasswordManagerUserData>& NewUserData);
+extern void SavePasswordManagerUser(const std::pair<PasswordManagerUserKey, PasswordManagerUserData>& NewUserData);
 
-extern inline bool LoadPasswordManagerUUID(PasswordManagerUserKey& CurrentUserKey);
+extern bool LoadPasswordManagerUUID(PasswordManagerUserKey& CurrentUserKey);
 
 // Function to load user data from a JSON file by UserKey UUID
-extern inline void LoadPasswordManagerUser(const PasswordManagerUserKey& CurrentUserKey, PasswordManagerUserData& EmptyUserData);
+extern void LoadPasswordManagerUser(const PasswordManagerUserKey& CurrentUserKey, PasswordManagerUserData& EmptyUserData);
 
-extern inline std::string PasswordAndHash(const std::vector<char>& Password, std::string RandomSalt);
-extern inline std::string PasswordAndHash(const std::string& Password, std::string RandomSalt);
+extern std::string PasswordAndHash(const std::vector<char>& Password, std::string RandomSalt);
+extern std::string PasswordAndHash(const std::string& Password, std::string RandomSalt);
 
 // Function to verify UUID
-extern inline bool VerifyUUID(const std::vector<char>& Username, const std::string& RandomSalt, uint64_t& RegistrationTime, const PasswordManagerUserKey& CurrentUserKey);
+extern bool VerifyUUID(const std::vector<char>& Username, const std::string& RandomSalt, uint64_t& RegistrationTime, const PasswordManagerUserKey& CurrentUserKey);
 
 // Function to verify the password
-extern inline bool VerifyPassword(const std::vector<char>& Password, const PasswordManagerUserKey& CurrentUserKey, const PasswordManagerUserData& CurrentUserData);
+extern bool VerifyPassword(const std::vector<char>& Password, const PasswordManagerUserKey& CurrentUserKey, const PasswordManagerUserData& CurrentUserData);
 
 //UUID string Concatenation Login/Registration Password string = Token String
-extern inline std::string MakeTokenString(const std::string& UUID, const std::vector<char>& BufferLoginPassword);
-extern inline std::string MakeTokenString(const std::string& UUID, const std::string& BufferLoginPassword);
+extern std::string MakeTokenString(const std::string& UUID, const std::vector<char>& BufferLoginPassword);
+extern std::string MakeTokenString(const std::string& UUID, const std::string& BufferLoginPassword);
 
-extern inline std::vector<std::uint8_t> GenerateMasterBytesKeyFromToken(const std::string& Token);
+extern std::vector<std::uint8_t> GenerateMasterBytesKeyFromToken(const std::string& Token);
 
-extern inline void MakePersonalFiles(const std::filesystem::path& UniquePathName_Password, const std::filesystem::path& UniquePathName_File, const std::string& Token);
+extern void MakePersonalFiles(const std::filesystem::path& UniquePathName_Password, const std::filesystem::path& UniquePathName_File, const std::string& Token);
 
 extern void FirstLoginLogic(const std::vector<char>& BufferLoginPassword, const PasswordManagerUserKey& CurrentUserKey, PasswordManagerUserData& CurrentUserData);
