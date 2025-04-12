@@ -108,7 +108,7 @@ class Logger
 
 	void Init(std::filesystem::path filepath = "./log.txt", uint32_t logmask = DEFAULT_MASK_VALUE);
 
-	void InitWithOutDefaultSink(uint32_t logmask = DEFAULT_MASK_VALUE);
+	void InitWithoutDefaultSink(uint32_t logmask = DEFAULT_MASK_VALUE);
 
 	void AppendSink(std::unique_ptr<Logger::LogSink> sink);
 
@@ -475,7 +475,7 @@ inline void Logger::Init(std::filesystem::path filepath, uint32_t logmask)
 	background_thread_ = std::jthread([this](std::stop_token st) { BackgroundThreadLoop(st); });
 }
 
-inline void Logger::InitWithOutDefaultSink(uint32_t logmask)
+inline void Logger::InitWithoutDefaultSink(uint32_t logmask)
 {
 	default_mask_ = logmask;
 
