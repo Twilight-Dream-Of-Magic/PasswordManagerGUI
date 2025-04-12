@@ -64,7 +64,7 @@ int main(int, char**)
 	{
 		volatile auto SG = MakeScopeGuard([](ApplicationData &) { APP_Cleanup(CurrentApplicationData); }, std::ref(CurrentApplicationData));
 
-		APP_Inital(CurrentApplicationData);
+		APP_Initial(CurrentApplicationData);
 
 		APP_Loop(CurrentApplicationData);
 	};
