@@ -111,7 +111,7 @@ inline void ImGUI_Inital(ApplicationData &AppData)
 	ImGui_ImplOpenGL3_Init(glsl_version);
 }
 
-inline void APP_Inital(ApplicationData &AppData)
+inline void APP_Initial(ApplicationData &AppData)
 {
 	using namespace std::chrono_literals;
 	ImGUI_Inital(AppData);
