@@ -210,9 +210,9 @@ class Logger
 class Logger::DefaultFileSink : public Logger::LogSink
 {
   public:
-	explicit DefaultFileSink(const std::filesystem::path &path, size_t max_flie_size = MAX_FILE_SIZE_VALUE)
+	explicit DefaultFileSink(const std::filesystem::path &path, size_t max_file_size = MAX_FILE_SIZE_VALUE)
 	    : file_mutex_()
-	    , max_flie_size_(max_flie_size)
+	    , max_file_size_(max_file_size)
 	{
 		SetLogFile(path);
 	}
@@ -235,7 +235,7 @@ class Logger::DefaultFileSink : public Logger::LogSink
 	std::ofstream         fs_;
 	std::filesystem::path filepath_;
 	std::mutex            file_mutex_;
-	size_t                max_flie_size_;
+	size_t                max_file_size_;
 };
 
 class Logger::DefaultConsoleSink : public Logger::LogSink
@@ -884,7 +884,7 @@ inline void Logger::DefaultFileSink::BeforeWrite(size_t)
 	}
 
 	// check if file should rolling
-	for (size_t count = 0; (fs_.tellp() >= 0 && static_cast<size_t>(fs_.tellp()) > max_flie_size_) && count < 5; ++count)
+	for (size_t count = 0; (fs_.tellp() >= 0 && static_cast<size_t>(fs_.tellp()) > max_file_size_) && count < 5; ++count)
 	{
 		if (!RollToNewFile())
 		{
