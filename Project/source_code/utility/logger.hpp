@@ -172,7 +172,7 @@ class Logger
 
 	void AppendTask(Logger::LogTask &&task);
 
-	void BackgourndThreadLoop(std::stop_token st);
+	void BackgroundThreadLoop(std::stop_token st);
 
 	static std::string GetCurrentTimeStr();
 
@@ -472,7 +472,7 @@ inline void Logger::Init(std::filesystem::path filepath, uint32_t logmask)
 		StopAndWaitAll();
 	}
 
-	background_thread_ = std::jthread([this](std::stop_token st) { BackgourndThreadLoop(st); });
+	background_thread_ = std::jthread([this](std::stop_token st) { BackgroundThreadLoop(st); });
 }
 
 inline void Logger::InitWithOutDefaultSink(uint32_t logmask)
@@ -491,7 +491,7 @@ inline void Logger::InitWithOutDefaultSink(uint32_t logmask)
 		StopAndWaitAll();
 	}
 
-	background_thread_ = std::jthread([this](std::stop_token st) { BackgourndThreadLoop(st); });
+	background_thread_ = std::jthread([this](std::stop_token st) { BackgroundThreadLoop(st); });
 }
 
 inline void Logger::AppendSink(std::unique_ptr<Logger::LogSink> sink) { sinks_.emplace_back(std::move(sink)); }
@@ -798,7 +798,7 @@ inline std::string Logger::GenerateLogText(const Logger::LogTask &task)
 	}
 };
 
-inline void Logger::BackgourndThreadLoop(std::stop_token st)
+inline void Logger::BackgroundThreadLoop(std::stop_token st)
 {
 	using namespace std::chrono_literals;
 #ifndef DISABLE_LOGGER
