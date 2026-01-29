@@ -281,6 +281,10 @@ inline void APP_Loop(ApplicationData &AppData)
 			ShowGUI_PFI_EncryptFile(AppData.BufferLoginPassword, AppData);
 		if (AppData.ShowPFI_DecryptFile)
 			ShowGUI_PFI_DecryptFile(AppData.BufferLoginPassword, AppData);
+		if (AppData.ShowPFI_EncryptFolder || AppData.ShowPFI_EncryptFolderResultPopup)
+			ShowGUI_PFI_EncryptFolder(AppData.BufferLoginPassword, AppData);
+		if (AppData.ShowPFI_DecryptFolder || AppData.ShowPFI_DecryptFolderResultPopup)
+			ShowGUI_PFI_DecryptFolder(AppData.BufferLoginPassword, AppData);
 		if (AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup)
 			ShowGUI_PFI_ConfirmDeleteAllFileInstances(AppData);
 

@@ -29,6 +29,11 @@ Please note that this project is still under active development.
 ### Status
 This project is currently under active development. Detailed instructions on usage and compilation will be provided in future updates.
 
+### Documentation
+- [Documentation index](docs/README.md)
+- [Architecture](docs/architecture.en.md)
+- [Engineering Paper](docs/engineering-paper.en.md)
+
 ---
 
 ## 中文说明
@@ -55,3 +60,8 @@ This project is currently under active development. Detailed instructions on usa
 
 ### 状态说明
 本项目目前正处于开发阶段，详细的使用说明和编译指南将在后续更新中提供。
+
+### 文档
+- [文档索引](docs/README.md)
+- [架构说明](docs/architecture.md)
+- [工程论文](docs/engineering-paper.md)

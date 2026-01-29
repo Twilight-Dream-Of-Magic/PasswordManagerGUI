@@ -154,3 +154,58 @@ auto FileDialogCallback
 	if constexpr (!std::is_void_v<CallBackReturnType>)
 		return std::nullopt;
 }
+
+template <typename Callback_t, typename... Args>
+requires std::invocable<Callback_t, std::filesystem::path, Args...>
+auto DirectoryDialogCallback
+(
+	const char *dialog_title,
+	bool disable,
+	Callback_t &&callback,
+	Args &&...args
+)
+	-> std::conditional_t<std::is_void_v<std::invoke_result_t<Callback_t, std::filesystem::path, Args &&...>>,
+    void,
+    std::optional<std::invoke_result_t<Callback_t, std::filesystem::path, Args &&...>>>
+{
+	using CallBackReturnType = std::invoke_result_t<Callback_t, std::filesystem::path, Args &&...>;
+	ImGui::BeginDisabled(disable);
+	if (ImGui::Button(dialog_title))
+	{
+		IGFD::FileDialogConfig FDConfig{};
+		FDConfig.path  = ".";
+		FDConfig.flags = ImGuiFileDialogFlags_Modal;
+		ImGuiFileDialog::Instance()->OpenDialog(
+		    dialog_title,
+		    dialog_title,
+		    nullptr,
+		    FDConfig);
+	}
+	ImGui::EndDisabled();
+
+	if (ImGuiFileDialog::Instance()->Display(
+	        dialog_title,
+	        ImGuiWindowFlags_NoCollapse,
+	        ImVec2(800, 600),
+	        ImVec2(1200, 800)))
+	{
+		if (ImGuiFileDialog::Instance()->IsOk())
+		{
+			auto SelectedPath = ImGuiFileDialog::Instance()->GetCurrentPath();
+			ImGuiFileDialog::Instance()->Close();
+
+			if constexpr (std::is_void_v<CallBackReturnType>)
+			{
+				std::forward<Callback_t>(callback)(SelectedPath, std::forward<Args>(args)...);
+				return;
+			}
+			else
+			{
+				return std::forward<Callback_t>(callback)(SelectedPath, std::forward<Args>(args)...);
+			}
+		}
+		ImGuiFileDialog::Instance()->Close();
+	}
+	if constexpr (!std::is_void_v<CallBackReturnType>)
+		return std::nullopt;
+}

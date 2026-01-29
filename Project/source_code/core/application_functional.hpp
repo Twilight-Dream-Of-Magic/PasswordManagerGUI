@@ -165,6 +165,23 @@ private:
 	void DeserializeInstances( const nlohmann::json& jsonData );
 
 public:
+	struct DirectoryOperationResult
+	{
+		std::uint64_t SucceededFiles = 0;
+		std::uint64_t FailedFiles = 0;
+		std::uint64_t SkippedFiles = 0;
+		std::vector<std::string> FailedPaths;
+		std::vector<std::string> SkippedPaths;
+		std::string Message;
+
+		[[nodiscard]] bool Successful() const
+		{
+			return FailedFiles == 0 && Message.empty();
+		}
+	};
+
+	static constexpr const char* EncryptedFileExtension = ".tdom-encrypted";
+
 	PersonalFileInfo() = default;
 
 	// Copy constructor to create a new instance from another PersonalFileInfo object
@@ -272,6 +289,10 @@ public:
 	* @throws LogFatalHelper if there is an error in verifying hashes or performing decryption.
 	*/
 	bool DecryptFile( const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& EncryptedFilePath, const std::filesystem::path& DecryptedFilePath );
+
+	DirectoryOperationResult EncryptDirectory( const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& SourceDirectoryPath, const std::filesystem::path& TargetDirectoryPath );
+
+	DirectoryOperationResult DecryptDirectory( const std::string& Token, const PersonalFileInstance& Instance, const std::filesystem::path& SourceDirectoryPath, const std::filesystem::path& TargetDirectoryPath );
 };
 
 // Function to generate a unique user ID

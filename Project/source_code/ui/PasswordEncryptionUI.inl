@@ -66,6 +66,7 @@ inline void ShowGUI_PersonalPasswordInfo(std::vector<char> &BufferLoginPassword,
 		AppData.ShowPPI_FindPasswordInstanceByID                  = false;
 		AppData.ShowPPI_FindPasswordInstanceByDescription         = false;
 		AppData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword = false;
+		AppData.ShowPPI_SystemPasswordChangeFileWarningPopup      = false;
 	}
 
 	ImGui::End();
@@ -423,7 +424,7 @@ inline void ShowGUI_PPI_DeletePasswordInstance(std::vector<char> &BufferLoginPas
 		{
 			correct_password = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-			if (AppData.PersonalPasswordObject.RemovePasswordInstance(AppData.ShowPPI_SelectedPasswordInstanceID))
+			if (correct_password && AppData.PersonalPasswordObject.RemovePasswordInstance(AppData.ShowPPI_SelectedPasswordInstanceID))
 			{
 				AppData.PersonalPasswordObject.Serialization(AppData.PersonalPasswordInfoFilePath);
 				AppData.IsPasswordInfoTemporaryValid = false;
@@ -472,13 +473,15 @@ inline void ShowGUI_PPI_DeleteAllPasswordInstance(std::vector<char> &BufferLogin
 		{
 			correct_password = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-			AppData.PersonalPasswordObject.RemoveAllPasswordInstance();
-			AppData.PersonalPasswordObject.Serialization(AppData.PersonalPasswordInfoFilePath);
+			if (correct_password)
+			{
+				AppData.PersonalPasswordObject.RemoveAllPasswordInstance();
+				AppData.PersonalPasswordObject.Serialization(AppData.PersonalPasswordInfoFilePath);
 
-			AppData.IsPasswordInfoTemporaryValid = false;
-			ImGui::CloseCurrentPopup();
-			AppData.ShowPPI_ConfirmDeleteAllPasswordInstance = false;
-			memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
+				AppData.IsPasswordInfoTemporaryValid = false;
+				ImGui::CloseCurrentPopup();
+				AppData.ShowPPI_ConfirmDeleteAllPasswordInstance = false;
+			}
 		}
 
 		ImGui::SameLine();
@@ -647,11 +650,15 @@ inline void ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(std::vector<ch
 		{
 			correct_password = VerifyPassword(BufferLoginPassword, AppData.UserKey, AppData.UserData);
 
-			Do_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, AppData);
-
-			AppData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword = false;
-
-			memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
+			if (correct_password)
+			{
+				AppData.ShowPPI_SystemPasswordChangeFileWarningPopup = true;
+			}
+			else
+			{
+				Do_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, AppData);
+				memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
+			}
 		}
 
 		ImGui::SameLine();
@@ -662,6 +669,7 @@ inline void ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(std::vector<ch
 			memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
 			memory_set_no_optimize_function<0x00>(AppData.ShowPPI_ConfirmPassword.data(), AppData.ShowPPI_ConfirmPassword.size());
 			memory_set_no_optimize_function<0x00>(AppData.ShowPPI_NewPassword.data(), AppData.ShowPPI_NewPassword.size());
+			AppData.ShowPPI_SystemPasswordChangeFileWarningPopup = false;
 			AppData.ShowPPI_ChangeInstanceMasterKeyWithSystemPassword = false;
 		}
 
@@ -669,6 +677,41 @@ inline void ShowGUI_PPI_ChangeInstanceMasterKeyWithSystemPassword(std::vector<ch
 	}
 
 	ImGui::End();
+
+	if (AppData.ShowPPI_SystemPasswordChangeFileWarningPopup)
+	{
+		ImGui::OpenPopup("File Decryption Warning Before System Password Change");
+	}
+	if (ImGui::BeginPopupModal("File Decryption Warning Before System Password Change", &AppData.ShowPPI_SystemPasswordChangeFileWarningPopup, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		ImGui::TextUnformatted("Warning");
+		ImGui::Separator();
+		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 560.0f);
+		ImGui::TextUnformatted(
+		    "File encryption keys are derived from the current system password. "
+		    "If you have files encrypted with the master key generated from the old system password, "
+		    "decrypt those files before changing the system password. Otherwise those files may become undecryptable and data may be lost.");
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+
+		if (ImGui::Button("I Understand, Change Password"))
+		{
+			Do_ChangeInstanceMasterKeyWithSystemPassword(BufferLoginPassword, AppData);
+			AppData.ShowPPI_SystemPasswordChangeFileWarningPopup = false;
+			memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Cancel"))
+		{
+			AppData.ShowPPI_SystemPasswordChangeFileWarningPopup = false;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
+	}
 
 	// Other Popup Logic for Success and Failure
 	if (AppData.ShowPPI_SystemPasswordChangeSuccessful)

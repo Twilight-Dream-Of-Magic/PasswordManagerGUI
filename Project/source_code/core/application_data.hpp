@@ -28,6 +28,7 @@ struct ApplicationData
 	bool ShowPPI_SystemPasswordChangeSuccessful            = false;
 	bool ShowPPI_SystemPasswordNotChange                   = false;
 	bool ShowPPI_SystemPasswordChangeFailed                = false;
+	bool ShowPPI_SystemPasswordChangeFileWarningPopup      = false;
 
 	bool ShowPPI_NeedAES     = false;
 	bool ShowPPI_NeedRC6     = false;
@@ -75,9 +76,13 @@ struct ApplicationData
 
 	bool ShowPFI_EncryptFile = false;
 	bool ShowPFI_DecryptFile = false;
+	bool ShowPFI_EncryptFolder = false;
+	bool ShowPFI_DecryptFolder = false;
 
 	bool ShowPFI_EncryptFileResultPopup = false;
 	bool ShowPFI_DecryptFileResultPopup = false;
+	bool ShowPFI_EncryptFolderResultPopup = false;
+	bool ShowPFI_DecryptFolderResultPopup = false;
 
 	std::uint64_t            ShowPFI_SelectedFileInstanceID = 0;
 	std::vector<std::string> ShowPFI_EncryptionAlgorithms;
@@ -102,6 +107,16 @@ struct ApplicationData
 	std::filesystem::path SourceEncryptedFilePath;
 	bool                  IsDecryptedFileSelected = false;
 	std::filesystem::path DecryptedFilePath;
+	bool                  IsSourceFolderSelected = false;
+	std::filesystem::path SourceFolderPath;
+	bool                  IsTargetEncryptedFolderSelected = false;
+	std::filesystem::path TargetEncryptedFolderPath;
+	bool                  IsSourceEncryptedFolderSelected = false;
+	std::filesystem::path SourceEncryptedFolderPath;
+    bool                  IsDecryptedFolderSelected = false;
+    std::filesystem::path DecryptedFolderPath;
+    std::string           ShowPFI_FolderInputErrorMessage;
+    PersonalFileInfo::DirectoryOperationResult LastFileDirectoryOperationResult;
 
 	/* Atomic flag indicating if any background task is currently running */
 	std::atomic_bool                     TaskInProgress     = false;

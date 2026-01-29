@@ -3,6 +3,7 @@
 	url = https://github.com/nlohmann/json.git
 [submodule "TDOM-EncryptOrDecryptFile-Reborn"]
 	path = TDOM-EncryptOrDecryptFile-Reborn
+	branch = MultiKeyStandardEncipherAndDecipher
 	url = https://github.com/Twilight-Dream-Of-Magic/TDOM-EncryptOrDecryptFile-Reborn.git
 [submodule "ImGuiFileDialog"]
 	path = ImGuiFileDialog

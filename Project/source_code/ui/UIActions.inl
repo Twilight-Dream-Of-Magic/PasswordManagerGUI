@@ -59,6 +59,8 @@ inline void Do_LogoutPersonalPasswordInfo(std::vector<char> &BufferLoginPassword
 	CurrentApplicationData.UserData                     = PasswordManagerUserData();
 	CurrentApplicationData.PersonalPasswordObject         = PersonalPasswordInfo();
 	CurrentApplicationData.PersonalPasswordInfoFilePath = "";
+	CurrentApplicationData.PersonalFileObject             = PersonalFileInfo();
+	CurrentApplicationData.PersonalDataInfoFilePath       = "";
 
 	// Zero Bytes SystemPassword - Secure Wipe
 	memory_set_no_optimize_function<0x00>(BufferLoginPassword.data(), BufferLoginPassword.size());
@@ -72,6 +74,7 @@ inline void Do_LogoutPersonalPasswordInfo(std::vector<char> &BufferLoginPassword
 	AppData.ShowPPI_ConfirmDeleteAllPasswordInstance  = false;
 	AppData.ShowPPI_FindPasswordInstanceByID          = false;
 	AppData.ShowPPI_FindPasswordInstanceByDescription = false;
+	AppData.ShowPPI_SystemPasswordChangeFileWarningPopup = false;
 	AppData.IsPasswordInfoTemporaryValid              = false;
 
 	AppData.ShowPFI_CreateFileInstance                 = false;
@@ -81,9 +84,31 @@ inline void Do_LogoutPersonalPasswordInfo(std::vector<char> &BufferLoginPassword
 	AppData.ShowPFI_ConfirmDeleteAllFileInstancesPopup = false;
 	AppData.ShowPFI_EncryptFile                        = false;
 	AppData.ShowPFI_DecryptFile                        = false;
+	AppData.ShowPFI_EncryptFolder                      = false;
+	AppData.ShowPFI_DecryptFolder                      = false;
 	AppData.ShowPFI_EncryptFileResultPopup             = false;
 	AppData.ShowPFI_DecryptFileResultPopup             = false;
+	AppData.ShowPFI_EncryptFolderResultPopup           = false;
+	AppData.ShowPFI_DecryptFolderResultPopup           = false;
 	AppData.ShowPFI_SelectedFileInstanceID             = 0;
+	AppData.IsOriginalFileSelected                     = false;
+	AppData.IsTargetEncryptedFileSelected              = false;
+	AppData.IsSourceEncryptedFileSelected              = false;
+	AppData.IsDecryptedFileSelected                    = false;
+	AppData.IsSourceFolderSelected                     = false;
+	AppData.IsTargetEncryptedFolderSelected            = false;
+	AppData.IsSourceEncryptedFolderSelected            = false;
+	AppData.IsDecryptedFolderSelected                  = false;
+	AppData.SourceFilePath.clear();
+	AppData.TargetEncryptedFilePath.clear();
+	AppData.SourceEncryptedFilePath.clear();
+	AppData.DecryptedFilePath.clear();
+	AppData.SourceFolderPath.clear();
+	AppData.TargetEncryptedFolderPath.clear();
+    AppData.SourceEncryptedFolderPath.clear();
+    AppData.DecryptedFolderPath.clear();
+    AppData.ShowPFI_FolderInputErrorMessage.clear();
+    AppData.LastFileDirectoryOperationResult = PersonalFileInfo::DirectoryOperationResult {};
 }
 
 inline void Do_CreatePasswordInstance(std::vector<char> &BufferLoginPassword, ApplicationData &AppData)
@@ -300,12 +325,7 @@ inline void Do_FindPasswordInstanceByID(std::vector<char> &BufferLoginPassword, 
 		if (Optional.has_value())
 		{
 			auto &Instance = Optional.value();
-			auto  it       = std::format_to(
-                buffer.begin(),
-                "ID: {0}\nNew Description {1}\nDecrypted Password: {2}\nEncryption Algorithms:\n",
-                Instance.ID,
-                Instance.Description.data(),
-                Instance.DecryptedPassword.data());
+			auto  it       = std::format_to( buffer.begin(), "ID: {0}\nNew Description {1}\nDecrypted Password: {2}\nEncryption Algorithms:\n", Instance.ID, Instance.Description.data(), Instance.DecryptedPassword.data() );
 
 			SetProgressTarget(AppData, 0.4f, 0.6f);
 
@@ -490,13 +510,17 @@ inline void Do_ChangeInstanceMasterKeyWithSystemPassword(std::vector<char> &Buff
 		memory_set_no_optimize_function<0x00>(AppData.ShowPPI_NewPassword.data(), AppData.ShowPPI_NewPassword.size());
 	};
 
-	static const auto async_task = [](ApplicationData &AppData, const std::vector<char> &BufferLoginPassword, const std::source_location &loc)
-	{ DropIfBusy(AppData.TaskInProgress, loc, task_change_ins_mst_key_wth_sys_pwd, std::ref(AppData), std::cref(BufferLoginPassword)); };
-
-	if (!AppData.TaskInProgress)
+	static const auto async_task = []( ApplicationData& AppData, std::vector<char> BufferLoginPasswordSnapshot, const std::source_location& loc )
 	{
-		std::scoped_lock lock(CurrentApplicationData.mutex_task);
-		CurrentApplicationData.current_task = std::bind(async_task, std::ref(AppData), std::cref(BufferLoginPassword), std::source_location::current());
+		volatile auto SG = MakeScopeGuard( []( std::vector<char>& Buffer ) { memory_set_no_optimize_function<0x00>( Buffer.data(), Buffer.size() * sizeof( char ) ); }, std::ref( BufferLoginPasswordSnapshot ) );
+
+		DropIfBusy( AppData.TaskInProgress, loc, task_change_ins_mst_key_wth_sys_pwd, std::ref( AppData ), std::cref( BufferLoginPasswordSnapshot ) );
+	};
+
+	if ( !AppData.TaskInProgress )
+	{
+		std::scoped_lock lock( CurrentApplicationData.mutex_task );
+		CurrentApplicationData.current_task = std::bind( async_task, std::ref( AppData ), BufferLoginPassword, std::source_location::current() );
 	}
 }
 

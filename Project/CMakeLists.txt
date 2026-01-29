@@ -10,16 +10,23 @@ project(PasswordManagerGUI LANGUAGES CXX)
 set(MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/source_code/main.cpp")
 
 # -----------------------------------------
-# Recursively collect other source files
+# Recursively collect project source files
 # -----------------------------------------
+function(escape_cmake_glob_path output_variable input_path)
+	string(REPLACE "\\" "/" escaped_path "${input_path}")
+	string(REPLACE "[" "[[]" escaped_path "${escaped_path}")
+	set(${output_variable} "${escaped_path}" PARENT_SCOPE)
+endfunction()
+
+escape_cmake_glob_path(PROJECT_SOURCE_GLOB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 file(GLOB_RECURSE PROJECT_SOURCE_FILES CONFIGURE_DEPENDS
-	"${CMAKE_CURRENT_SOURCE_DIR}/source_code/*.h"
-	"${CMAKE_CURRENT_SOURCE_DIR}/source_code/*.hpp"
-	"${CMAKE_CURRENT_SOURCE_DIR}/source_code/*.inl"
-	"${CMAKE_CURRENT_SOURCE_DIR}/source_code/*.cpp"
+	"${PROJECT_SOURCE_GLOB_ROOT}/source_code/*.h"
+	"${PROJECT_SOURCE_GLOB_ROOT}/source_code/*.hpp"
+	"${PROJECT_SOURCE_GLOB_ROOT}/source_code/*.inl"
+	"${PROJECT_SOURCE_GLOB_ROOT}/source_code/*.cpp"
 )
 
-# Remove main.cpp if it was also collected in the glob
+# Remove main.cpp if it was also collected in the glob.
 list(REMOVE_ITEM PROJECT_SOURCE_FILES "${MAIN_SOURCE}")
 
 # -----------------------------------------
@@ -44,6 +51,14 @@ set(SOURCES ${MAIN_SOURCE} ${PROJECT_SOURCE_FILES} ${EXTERNAL_SOURCES})
 # Define the executable target
 add_executable(PasswordManagerGUI ${SOURCES})
 
+# Require C++20 on the actual target. CMAKE_CXX_STANDARD only initializes
+# targets created after it is set, so keep this target property explicit.
+set_target_properties(PasswordManagerGUI PROPERTIES
+	CXX_STANDARD 20
+	CXX_STANDARD_REQUIRED ON
+	CXX_EXTENSIONS OFF
+)
+
 # -----------------------------------------
 # Add include directories for headers
 # -----------------------------------------
@@ -56,13 +71,13 @@ target_include_directories(PasswordManagerGUI PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}/../TDOM-EncryptOrDecryptFile-Reborn/include"
 )
 
-# Set C++20 standard and related options
+# Set C++20 defaults for any future targets
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # -------------------------------
-# Compiler options for GNU/Clang
+# Compiler options
 # -------------------------------
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
 	target_compile_options(PasswordManagerGUI PRIVATE
@@ -75,6 +90,20 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 		-g
 		-Wall
 		-Wformat=2
+	)
+elseif(MSVC)
+	target_compile_options(PasswordManagerGUI PRIVATE
+		/utf-8
+		/bigobj
+		/W4
+		/wd4146
+		/Zc:__cplusplus
+		/Zc:preprocessor
+		/permissive-
+		/EHsc
+	)
+	target_compile_definitions(PasswordManagerGUI PRIVATE
+		_CRT_SECURE_NO_WARNINGS
 	)
 endif()
 
@@ -106,33 +135,59 @@ elseif(UNIX)
 endif()
 
 # -----------------------------------------
-# Windows-specific configuration for Mingw Makefiles (Mingw Only)
+# Windows-specific linking configuration
 # -----------------------------------------
 if(WIN32)
-	# Ensure that we are using the Mingw compiler only.
-	if(NOT CMAKE_C_COMPILER MATCHES "mingw")
-		message(FATAL_ERROR "This project must be compiled with the Mingw compiler.")
-	endif()
-
 	# Set the root path for the GLFW library.
 	set(GLFW_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/libs/glfw)
 
-	# Choose the correct GLFW library based on the architecture.
-	if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-		# 64-bit platform
-		set(GLFW_LIBRARY ${GLFW_ROOT}/lib-vc2010-64/glfw3.lib)
-	elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-		# 32-bit platform
-		set(GLFW_LIBRARY ${GLFW_ROOT}/lib-vc2010-32/glfw3.lib)
+	if(MSVC)
+		# Choose the bundled MSVC GLFW library based on the target architecture.
+		if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+			set(GLFW_LIBRARY ${GLFW_ROOT}/lib-vc2010-64/glfw3.lib)
+		elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+			set(GLFW_LIBRARY ${GLFW_ROOT}/lib-vc2010-32/glfw3.lib)
+		else()
+			message(FATAL_ERROR "Unknown pointer size detected!")
+		endif()
+
+		if(NOT EXISTS "${GLFW_LIBRARY}")
+			message(FATAL_ERROR "Bundled MSVC GLFW library not found: ${GLFW_LIBRARY}")
+		endif()
+
+		message(STATUS "Using MSVC compiler on Windows. Pointer size: ${CMAKE_SIZEOF_VOID_P}")
+
+		target_link_libraries(PasswordManagerGUI PRIVATE
+			${GLFW_LIBRARY}
+			opengl32
+			gdi32
+			shell32
+			user32
+		)
+	elseif(MINGW)
+		find_library(GLFW_LIBRARY
+			NAMES glfw3 libglfw3
+			PATHS
+				"${GLFW_ROOT}/lib-mingw-w64"
+				"${GLFW_ROOT}/lib-mingw"
+				"${GLFW_ROOT}/lib"
+			NO_DEFAULT_PATH
+		)
+
+		if(NOT GLFW_LIBRARY)
+			message(FATAL_ERROR "MinGW build requires a MinGW-compatible GLFW library under ${GLFW_ROOT}.")
+		endif()
+
+		message(STATUS "Using MinGW compiler on Windows. Pointer size: ${CMAKE_SIZEOF_VOID_P}")
+
+		target_link_libraries(PasswordManagerGUI PRIVATE
+			${GLFW_LIBRARY}
+			opengl32
+			gdi32
+			shell32
+			user32
+		)
 	else()
-		message(FATAL_ERROR "Unknown pointer size detected!")
+		message(FATAL_ERROR "Unsupported Windows compiler. Use MSVC or MinGW.")
 	endif()
-
-	message(STATUS "Using Mingw compiler on Windows. Pointer size: ${CMAKE_SIZEOF_VOID_P}")
-
-	# Link Windows-specific libraries.
-	target_link_libraries(PasswordManagerGUI PRIVATE
-		${GLFW_LIBRARY}
-		opengl32
-	)
 endif()

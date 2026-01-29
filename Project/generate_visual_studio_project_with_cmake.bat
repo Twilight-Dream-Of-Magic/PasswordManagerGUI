@@ -1,18 +1,23 @@
 @echo off
 rem ========================================================
-rem Auto-detect Visual Studio, set up environment, and run CMake
+rem Auto-detect Visual Studio 2022, set up environment, and run CMake
 rem ========================================================
+setlocal EnableExtensions EnableDelayedExpansion
+set BUILD_DIR=build_vs2022_x64
 
 rem Switch to OEM code page (437) to avoid Unicode issues.
 chcp 437 >nul
 
-echo Searching for Visual Studio installation using vswhere...
+echo Searching for Visual Studio 2022 installation using vswhere...
 for /f "delims=" %%i in (
-    '"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath'
-) do set VSPATH=%%i
+    '"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -all -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath'
+) do (
+    set "VS_CANDIDATE=%%i"
+    if not "!VS_CANDIDATE:2022=!"=="!VS_CANDIDATE!" set "VSPATH=%%i"
+)
 
 if not defined VSPATH (
-    echo Could not find a Visual Studio installation!
+    echo Could not find a Visual Studio 2022 installation!
     pause
     exit /b 1
 )
@@ -36,6 +41,17 @@ call "%VCVARSALL%" x64
 rem Reassert the OEM code page in case it was changed by vcvarsall
 chcp 437 >nul
 
+rem Use the Visual Studio bundled CMake. A CMake installation under a path
+rem containing square brackets can break CMake's own file(GLOB) module lookup.
+set "CMAKE_EXE=%VSPATH%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+if not exist "%CMAKE_EXE%" (
+    echo CMake not found at: %CMAKE_EXE%
+    echo Please install the Visual Studio CMake tools component.
+    pause
+    exit /b 1
+)
+echo Using CMake: %CMAKE_EXE%
+
 rem Auto-detect the full path of cl.exe from the current environment
 for /f "delims=" %%A in ('where cl.exe') do (
     set CLPATH=%%A
@@ -49,14 +65,10 @@ if not defined CLPATH (
 )
 echo Found cl.exe at: %CLPATH%
 
-rem Convert backslashes to forward slashes in the cl.exe path
-set "CLPATH=%CLPATH:\=/%"
-echo Converted cl.exe path: %CLPATH%
-
-rem Check if the "build" directory exists; if not, create it.
-if not exist "build" (
+rem Check if the build directory exists; if not, create it.
+if not exist "%BUILD_DIR%" (
     echo Creating build directory...
-    mkdir build
+    mkdir "%BUILD_DIR%"
 )
 
 rem ========================================================
@@ -84,13 +96,15 @@ rem ========================================================
 rem Run CMake with the auto-detected compiler path
 rem ========================================================
 echo Running CMake...
-cmake -G "Visual Studio 17 2022" -DCMAKE_C_COMPILER="%CLPATH%" -DCMAKE_CXX_COMPILER="%CLPATH%" -DCMAKE_CXX_FLAGS="/Zc:__cplusplus /utf-8 /bigobj /W4 /wd4146 /D_CRT_SECURE_NO_WARNINGS /Zc:preprocessor /std:c++20 /permissive- /EHsc" -S ./ -B ./build
+"%CMAKE_EXE%" -U CMAKE_C_COMPILER -U CMAKE_CXX_COMPILER -U CMAKE_C_FLAGS -U CMAKE_CXX_FLAGS -G "Visual Studio 17 2022" -A x64 -S ./ -B ./%BUILD_DIR%
 
-::if errorlevel 1 (
-::    echo CMake configuration failed. Please review the error messages above.
-::)
+if errorlevel 1 (
+    echo CMake configuration failed. Please review the error messages above.
+    pause
+    exit /b 1
+)
 
-echo Project generated successfully. The solution is in the "build" directory.
+echo Project generated successfully. The solution is in the "%BUILD_DIR%" directory.
 
 :::Restore
 rem ========================================================

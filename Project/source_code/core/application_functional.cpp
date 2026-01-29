@@ -112,7 +112,7 @@ void GenerateRandomSalt(std::string& RandomSalt)
 
 std::vector<uint8_t> GenerateRandomKey()
 {
-	using CommonSecurity::DRBG::HMAC::WorkerBasedHAMC;
+	using CommonSecurity::DRBG::HMAC::WorkerBasedHMAC;
 
 	CommonSecurity::DataHashingWrapper::HashersAssistantParameters HAP_ObjectArgument {};
 	HAP_ObjectArgument.hash_mode = CommonSecurity::SHA::Hasher::WORKER_MODE::SHA3_512;
@@ -121,7 +121,7 @@ std::vector<uint8_t> GenerateRandomKey()
 	HAP_ObjectArgument.inputDataString = "";
 	HAP_ObjectArgument.outputHashedHexadecimalString = "";
 
-	WorkerBasedHAMC RandomKeyGenerator(HAP_ObjectArgument);
+	WorkerBasedHMAC RandomKeyGenerator(HAP_ObjectArgument);
 
 	std::vector<uint8_t> RandomKeyData(256 / 8, 0x00);
 
@@ -324,6 +324,7 @@ void SavePasswordManagerUser(const std::pair<PasswordManagerUserKey, PasswordMan
 			UserData["UserDetails"]["HashedPassword"] = NewUserData.second.HashedPassword;
 			UserData["UserDetails"]["IsFirstLogin"] = NewUserData.second.IsFirstLogin;
 			UserData["UserDetails"]["PersonalPasswordInfoFileName"] = NewUserData.second.PersonalPasswordInfoFileName;
+			UserData["UserDetails"]["PersonalDataInfoFileName"] = NewUserData.second.PersonalDataInfoFileName;
 
 			UserExists = true;
 			break;
@@ -345,6 +346,7 @@ void SavePasswordManagerUser(const std::pair<PasswordManagerUserKey, PasswordMan
 		UserDataDetails["HashedPassword"] = NewUserData.second.HashedPassword;
 		UserDataDetails["IsFirstLogin"] = NewUserData.second.IsFirstLogin;
 		UserDataDetails["PersonalPasswordInfoFileName"] = NewUserData.second.PersonalPasswordInfoFileName;
+		UserDataDetails["PersonalDataInfoFileName"] = NewUserData.second.PersonalDataInfoFileName;
 		
 		UserData["UserDetails"] = UserDataDetails;
 
@@ -447,6 +449,10 @@ void LoadPasswordManagerUser(const PasswordManagerUserKey& CurrentUserKey, Passw
 			EmptyUserData.HashedPassword = UserData["UserDetails"]["HashedPassword"];
 			EmptyUserData.IsFirstLogin = UserData["UserDetails"]["IsFirstLogin"];
 			EmptyUserData.PersonalPasswordInfoFileName = UserData["UserDetails"]["PersonalPasswordInfoFileName"];
+			if ( UserData["UserDetails"].contains( "PersonalDataInfoFileName" ) )
+			{
+				EmptyUserData.PersonalDataInfoFileName = UserData["UserDetails"]["PersonalDataInfoFileName"];
+			}
 			break;
 		}
 	}
@@ -1311,6 +1317,75 @@ void PersonalPasswordInfo::ChangeInstanceMasterKeyWithSystemPassword(const std::
 
 /***** PersonalFileInfo Functions *****/
 
+namespace
+{
+	constexpr std::size_t DIRECTORY_OPERATION_PATH_SAMPLE_LIMIT = 32;
+
+	std::filesystem::path WeaklyCanonicalOrNormal( const std::filesystem::path& Path )
+	{
+		std::error_code ErrorCode;
+		std::filesystem::path CanonicalPath = std::filesystem::weakly_canonical( Path, ErrorCode );
+		if ( ErrorCode )
+		{
+			return Path.lexically_normal();
+		}
+
+		return CanonicalPath.lexically_normal();
+	}
+
+	bool IsSameOrSubPath( const std::filesystem::path& PossibleChildPath, const std::filesystem::path& PossibleParentPath )
+	{
+		std::filesystem::path ChildPath = WeaklyCanonicalOrNormal( PossibleChildPath );
+		std::filesystem::path ParentPath = WeaklyCanonicalOrNormal( PossibleParentPath );
+
+		auto ChildIterator = ChildPath.begin();
+		auto ParentIterator = ParentPath.begin();
+
+		for ( ; ParentIterator != ParentPath.end(); ++ParentIterator, ++ChildIterator )
+		{
+			if ( ChildIterator == ChildPath.end() || *ChildIterator != *ParentIterator )
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	void AppendPathSample( std::vector<std::string>& Paths, const std::filesystem::path& Path )
+	{
+		if ( Paths.size() < DIRECTORY_OPERATION_PATH_SAMPLE_LIMIT )
+		{
+			Paths.push_back( Path.string() );
+		}
+	}
+
+	bool EndsWith( const std::string& Text, const std::string& Suffix )
+	{
+		return Text.size() >= Suffix.size() && Text.compare( Text.size() - Suffix.size(), Suffix.size(), Suffix ) == 0;
+	}
+
+	bool StripEncryptedFileExtension( std::filesystem::path& Path )
+	{
+		std::string FileName = Path.filename().string();
+		const std::string Extension = PersonalFileInfo::EncryptedFileExtension;
+
+		if ( !EndsWith( FileName, Extension ) )
+		{
+			return false;
+		}
+
+		FileName.resize( FileName.size() - Extension.size() );
+		if ( FileName.empty() )
+		{
+			return false;
+		}
+
+		Path.replace_filename( FileName );
+		return true;
+	}
+}
+
 // PersonalFileInfo 类的序列化辅助函数
 void PersonalFileInfo::SerializeInstances(nlohmann::json& jsonData) const
 {
@@ -1443,6 +1518,10 @@ bool PersonalFileInfo::RemoveFileInstance(std::uint64_t ID)
 	if (it != Instances.end())
 	{
 		Instances.erase(it, Instances.end());
+		for ( std::uint64_t NewID = 0; NewID < this->Instances.size(); ++NewID )
+		{
+			Instances[ NewID ].ID = NewID;
+		}
 		return true;
 	}
 
@@ -1466,13 +1545,22 @@ auto PersonalFileInfo::GetFileInstanceByID(uint64_t ID) -> std::optional<std::re
 		//my_cpp2020_assert(false, "File Instance ID not found.", std::source_location::current());
 	}
 
-	if (ID >= this->Instances.size())
+	auto it = std::find_if
+	(
+		Instances.begin(), Instances.end(),
+		[ID](const PersonalFileInstance& instance)
+		{
+			return instance.ID == ID;
+		}
+	);
+
+	if ( it == Instances.end() )
 	{
-		Logger::Instance().Error().Log("Error: File Instance ID out of range.");
+		Logger::Instance().Error().Log("Error: File Instance ID not found.");
 		return std::nullopt;
 	}
 
-	return std::ref(this->Instances[ID]);
+	return std::ref( *it );
 }
 
 std::vector<PersonalFileInfo::PersonalFileInstance>& PersonalFileInfo::GetFileInstances()
@@ -1534,7 +1622,7 @@ std::deque<std::vector<std::uint8_t>> PersonalFileInfo::GenerateFileMultipleSubK
 
 		// # NEED TEST #
 
-		CommonSecurity::DRBG::HMAC::WorkerBasedHAMC DRBG_HMAC( HAP_ObjectArgument );
+		CommonSecurity::DRBG::HMAC::WorkerBasedHMAC DRBG_HMAC( HAP_ObjectArgument );
 
 		std::deque<std::vector<std::uint8_t>> MultipleSubKeys;
 		for ( uint32_t i = 0; i < Instance.DecryptionAlgorithmNames.size(); i++ )
@@ -1616,47 +1704,50 @@ bool PersonalFileInfo::EncryptFile( const std::string& Token, const PersonalFile
 	// Generate the encryption subkeys
 	std::deque<std::vector<std::uint8_t>> MultipleSubKeys = this->GenerateFileMultipleSubKeys( Instance, MasterKey );
 
-	//0 ~ N
-	uint32_t KeyIndex = 0;
-
-	// Block cipher using stream processing counter mode
-	// Perform multiple encryption
-	for ( const auto& Algorithm : Instance.EncryptionAlgorithmNames )
+	if ( !FileByteData.empty() )
 	{
-		auto& EncryptionKey = MultipleSubKeys[ KeyIndex % Instance.EncryptionAlgorithmNames.size() ];
+		//0 ~ N
+		uint32_t KeyIndex = 0;
 
-		if ( Algorithm == CryptoCipherAlgorithmNames[ 0 ] )	 // AES
+		// Block cipher using stream processing counter mode
+		// Perform multiple encryption
+		for ( const auto& Algorithm : Instance.EncryptionAlgorithmNames )
 		{
-			CommonSecurity::AES::DataWorker256 AES_128_256 {};
-			AES_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, EncryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 1 ] )  // RC6
-		{
-			CommonSecurity::RC6::DataWorker128_256 RC6_128_256 {};
-			RC6_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, EncryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 2 ] )  // SM4
-		{
-			CommonSecurity::ChinaShangYongMiMa4::DataWorker256 SM4_128_256 {};
-			SM4_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, EncryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 3 ] )  // Twofish
-		{
-			CommonSecurity::Twofish::DataWorker256 Twofish_128_256 {};
-			Twofish_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, EncryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 4 ] )  // Serpent
-		{
-			CommonSecurity::Serpent::DataWorker256 Serpent_128_256 {};
-			Serpent_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, EncryptionKey, FileByteData );
-		}
-		else
-		{
-			Logger::Instance().Error().Log("Unsupported encryption algorithm: {0}", Algorithm);
-			return false;
-		}
+			auto& EncryptionKey = MultipleSubKeys[ KeyIndex % Instance.EncryptionAlgorithmNames.size() ];
 
-		KeyIndex++;
+			if ( Algorithm == CryptoCipherAlgorithmNames[ 0 ] )	 // AES
+			{
+				CommonSecurity::AES::DataWorker256 AES_128_256 {};
+				AES_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, EncryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 1 ] )  // RC6
+			{
+				CommonSecurity::RC6::DataWorker128_256 RC6_128_256 {};
+				RC6_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, EncryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 2 ] )  // SM4
+			{
+				CommonSecurity::ChinaShangYongMiMa4::DataWorker256 SM4_128_256 {};
+				SM4_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, EncryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 3 ] )  // Twofish
+			{
+				CommonSecurity::Twofish::DataWorker256 Twofish_128_256 {};
+				Twofish_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, EncryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 4 ] )  // Serpent
+			{
+				CommonSecurity::Serpent::DataWorker256 Serpent_128_256 {};
+				Serpent_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, EncryptionKey, FileByteData );
+			}
+			else
+			{
+				Logger::Instance().Error().Log("Unsupported encryption algorithm: {0}", Algorithm);
+				return false;
+			}
+
+			KeyIndex++;
+		}
 	}
 
 	// Compute the hash of the encrypted data
@@ -1810,47 +1901,50 @@ bool PersonalFileInfo::DecryptFile( const std::string& Token, const PersonalFile
 		std::terminate();
 	}
 
-	//N ~ 0
-	uint32_t KeyIndex = Instance.DecryptionAlgorithmNames.size() - 1ull;
-
-	// Block cipher using stream processing counter mode
-	// Perform multiple decryption (reverse order)
-	for (const auto& Algorithm : Instance.DecryptionAlgorithmNames )
+	if ( !FileByteData.empty() )
 	{
-		auto& DecryptionKey = MultipleSubKeys[ (KeyIndex) % Instance.DecryptionAlgorithmNames.size() ];
+		//N ~ 0
+		std::size_t KeyIndex = Instance.DecryptionAlgorithmNames.size() - 1ull;
 
-		if ( Algorithm == CryptoCipherAlgorithmNames[ 0 ] )	 // AES
+		// Block cipher using stream processing counter mode
+		// Perform multiple decryption (reverse order)
+		for (const auto& Algorithm : Instance.DecryptionAlgorithmNames )
 		{
-			CommonSecurity::AES::DataWorker256 AES_128_256 {};
-			AES_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, DecryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 1 ] )  // RC6
-		{
-			CommonSecurity::RC6::DataWorker128_256 RC6_128_256 {};
-			RC6_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, DecryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 2 ] )  // SM4
-		{
-			CommonSecurity::ChinaShangYongMiMa4::DataWorker256 SM4_128_256 {};
-			SM4_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, DecryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 3 ] )  // Twofish
-		{
-			CommonSecurity::Twofish::DataWorker256 Twofish_128_256 {};
-			Twofish_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, DecryptionKey, FileByteData );
-		}
-		else if ( Algorithm == CryptoCipherAlgorithmNames[ 4 ] )  // Serpent
-		{
-			CommonSecurity::Serpent::DataWorker256 Serpent_128_256 {};
-			Serpent_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, DecryptionKey, FileByteData );
-		}
-		else
-		{
-			Logger::Instance().Error().Log("Unsupported decryption algorithm: {0}", Algorithm);
-			return false;
-		}
+			auto& DecryptionKey = MultipleSubKeys[ (KeyIndex) % Instance.DecryptionAlgorithmNames.size() ];
 
-		KeyIndex--;
+			if ( Algorithm == CryptoCipherAlgorithmNames[ 0 ] )	 // AES
+			{
+				CommonSecurity::AES::DataWorker256 AES_128_256 {};
+				AES_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, DecryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 1 ] )  // RC6
+			{
+				CommonSecurity::RC6::DataWorker128_256 RC6_128_256 {};
+				RC6_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, DecryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 2 ] )  // SM4
+			{
+				CommonSecurity::ChinaShangYongMiMa4::DataWorker256 SM4_128_256 {};
+				SM4_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, DecryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 3 ] )  // Twofish
+			{
+				CommonSecurity::Twofish::DataWorker256 Twofish_128_256 {};
+				Twofish_128_256.CTR_StreamModeBasedDecryptFunction( FileByteData, DecryptionKey, FileByteData );
+			}
+			else if ( Algorithm == CryptoCipherAlgorithmNames[ 4 ] )  // Serpent
+			{
+				CommonSecurity::Serpent::DataWorker256 Serpent_128_256 {};
+				Serpent_128_256.CTR_StreamModeBasedEncryptFunction( FileByteData, DecryptionKey, FileByteData );
+			}
+			else
+			{
+				Logger::Instance().Error().Log("Unsupported decryption algorithm: {0}", Algorithm);
+				return false;
+			}
+
+			KeyIndex--;
+		}
 	}
 
 	// Compute and verify the hash of the decrypted data
@@ -1902,4 +1996,298 @@ bool PersonalFileInfo::DecryptFile( const std::string& Token, const PersonalFile
 	Logger::Instance().Info().Log("File decrypted successfully: {0}", DecryptedFilePath.string());
 
 	return true;
+}
+
+PersonalFileInfo::DirectoryOperationResult PersonalFileInfo::EncryptDirectory
+(
+	const std::string& Token,
+	const PersonalFileInstance& Instance,
+	const std::filesystem::path& SourceDirectoryPath,
+	const std::filesystem::path& TargetDirectoryPath
+)
+{
+	DirectoryOperationResult Result;
+
+	std::error_code ErrorCode;
+	if ( !std::filesystem::is_directory( SourceDirectoryPath, ErrorCode ) || ErrorCode )
+	{
+		Result.Message = "Source folder does not exist or is not a directory.";
+		Logger::Instance().Error().Log( "Encrypt folder failed: {0}", Result.Message );
+		return Result;
+	}
+
+	ErrorCode.clear();
+	if ( std::filesystem::exists( TargetDirectoryPath, ErrorCode ) && !std::filesystem::is_directory( TargetDirectoryPath, ErrorCode ) )
+	{
+		Result.Message = "Target path exists but is not a directory.";
+		Logger::Instance().Error().Log( "Encrypt folder failed: {0}", Result.Message );
+		return Result;
+	}
+
+	if ( IsSameOrSubPath( TargetDirectoryPath, SourceDirectoryPath ) )
+	{
+		Result.Message = "Target folder must not be the same as or inside the source folder.";
+		Logger::Instance().Error().Log( "Encrypt folder failed: {0}", Result.Message );
+		return Result;
+	}
+
+	ErrorCode.clear();
+	std::filesystem::create_directories( TargetDirectoryPath, ErrorCode );
+	if ( ErrorCode )
+	{
+		Result.Message = "Failed to create target folder.";
+		Logger::Instance().Error().Log( "Encrypt folder failed: {0} Path: {1}", Result.Message, TargetDirectoryPath.string() );
+		return Result;
+	}
+
+	std::error_code IteratorError;
+	std::filesystem::recursive_directory_iterator Iterator
+	(
+		SourceDirectoryPath,
+		std::filesystem::directory_options::skip_permission_denied,
+		IteratorError
+	);
+	const std::filesystem::recursive_directory_iterator EndIterator;
+
+	if ( IteratorError )
+	{
+		Result.Message = "Failed to open source folder.";
+		Logger::Instance().Error().Log( "Encrypt folder failed: {0} Path: {1}", Result.Message, SourceDirectoryPath.string() );
+		return Result;
+	}
+
+	for ( ; Iterator != EndIterator; Iterator.increment( IteratorError ) )
+	{
+		if ( IteratorError )
+		{
+			Result.SkippedFiles++;
+			IteratorError.clear();
+			continue;
+		}
+
+		const std::filesystem::directory_entry DirectoryEntry = *Iterator;
+		const std::filesystem::path SourceFilePath = DirectoryEntry.path();
+
+		std::error_code StatusError;
+		const auto SymlinkStatus = DirectoryEntry.symlink_status( StatusError );
+		if ( StatusError || std::filesystem::is_symlink( SymlinkStatus ) )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		StatusError.clear();
+		const auto FileStatus = DirectoryEntry.status( StatusError );
+		if ( StatusError )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		if ( std::filesystem::is_directory( FileStatus ) )
+		{
+			continue;
+		}
+
+		if ( !std::filesystem::is_regular_file( FileStatus ) )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		std::error_code RelativeError;
+		std::filesystem::path RelativePath = std::filesystem::relative( SourceFilePath, SourceDirectoryPath, RelativeError );
+		if ( RelativeError )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		std::filesystem::path TargetFilePath = TargetDirectoryPath / RelativePath;
+		TargetFilePath += EncryptedFileExtension;
+
+		ErrorCode.clear();
+		std::filesystem::create_directories( TargetFilePath.parent_path(), ErrorCode );
+		if ( ErrorCode )
+		{
+			Result.FailedFiles++;
+			AppendPathSample( Result.FailedPaths, SourceFilePath );
+			Logger::Instance().Error().Log( "Failed to create encrypted file parent folder: {0}", TargetFilePath.parent_path().string() );
+			continue;
+		}
+
+		if ( this->EncryptFile( Token, Instance, SourceFilePath, TargetFilePath ) )
+		{
+			Result.SucceededFiles++;
+		}
+		else
+		{
+			Result.FailedFiles++;
+			AppendPathSample( Result.FailedPaths, SourceFilePath );
+		}
+	}
+
+	Logger::Instance().Info().Log
+	(
+		"Folder encrypted. Success: {0}, Failed: {1}, Skipped: {2}",
+		Result.SucceededFiles,
+		Result.FailedFiles,
+		Result.SkippedFiles
+	);
+
+	return Result;
+}
+
+PersonalFileInfo::DirectoryOperationResult PersonalFileInfo::DecryptDirectory
+(
+	const std::string& Token,
+	const PersonalFileInstance& Instance,
+	const std::filesystem::path& SourceDirectoryPath,
+	const std::filesystem::path& TargetDirectoryPath
+)
+{
+	DirectoryOperationResult Result;
+
+	std::error_code ErrorCode;
+	if ( !std::filesystem::is_directory( SourceDirectoryPath, ErrorCode ) || ErrorCode )
+	{
+		Result.Message = "Source encrypted folder does not exist or is not a directory.";
+		Logger::Instance().Error().Log( "Decrypt folder failed: {0}", Result.Message );
+		return Result;
+	}
+
+	ErrorCode.clear();
+	if ( std::filesystem::exists( TargetDirectoryPath, ErrorCode ) && !std::filesystem::is_directory( TargetDirectoryPath, ErrorCode ) )
+	{
+		Result.Message = "Target path exists but is not a directory.";
+		Logger::Instance().Error().Log( "Decrypt folder failed: {0}", Result.Message );
+		return Result;
+	}
+
+	if ( IsSameOrSubPath( TargetDirectoryPath, SourceDirectoryPath ) )
+	{
+		Result.Message = "Target folder must not be the same as or inside the source encrypted folder.";
+		Logger::Instance().Error().Log( "Decrypt folder failed: {0}", Result.Message );
+		return Result;
+	}
+
+	ErrorCode.clear();
+	std::filesystem::create_directories( TargetDirectoryPath, ErrorCode );
+	if ( ErrorCode )
+	{
+		Result.Message = "Failed to create target folder.";
+		Logger::Instance().Error().Log( "Decrypt folder failed: {0} Path: {1}", Result.Message, TargetDirectoryPath.string() );
+		return Result;
+	}
+
+	std::error_code IteratorError;
+	std::filesystem::recursive_directory_iterator Iterator
+	(
+		SourceDirectoryPath,
+		std::filesystem::directory_options::skip_permission_denied,
+		IteratorError
+	);
+	const std::filesystem::recursive_directory_iterator EndIterator;
+
+	if ( IteratorError )
+	{
+		Result.Message = "Failed to open source encrypted folder.";
+		Logger::Instance().Error().Log( "Decrypt folder failed: {0} Path: {1}", Result.Message, SourceDirectoryPath.string() );
+		return Result;
+	}
+
+	for ( ; Iterator != EndIterator; Iterator.increment( IteratorError ) )
+	{
+		if ( IteratorError )
+		{
+			Result.SkippedFiles++;
+			IteratorError.clear();
+			continue;
+		}
+
+		const std::filesystem::directory_entry DirectoryEntry = *Iterator;
+		const std::filesystem::path SourceFilePath = DirectoryEntry.path();
+
+		std::error_code StatusError;
+		const auto SymlinkStatus = DirectoryEntry.symlink_status( StatusError );
+		if ( StatusError || std::filesystem::is_symlink( SymlinkStatus ) )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		StatusError.clear();
+		const auto FileStatus = DirectoryEntry.status( StatusError );
+		if ( StatusError )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		if ( std::filesystem::is_directory( FileStatus ) )
+		{
+			continue;
+		}
+
+		if ( !std::filesystem::is_regular_file( FileStatus ) )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		std::error_code RelativeError;
+		std::filesystem::path RelativePath = std::filesystem::relative( SourceFilePath, SourceDirectoryPath, RelativeError );
+		if ( RelativeError )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		if ( !StripEncryptedFileExtension( RelativePath ) )
+		{
+			Result.SkippedFiles++;
+			AppendPathSample( Result.SkippedPaths, SourceFilePath );
+			continue;
+		}
+
+		std::filesystem::path TargetFilePath = TargetDirectoryPath / RelativePath;
+
+		ErrorCode.clear();
+		std::filesystem::create_directories( TargetFilePath.parent_path(), ErrorCode );
+		if ( ErrorCode )
+		{
+			Result.FailedFiles++;
+			AppendPathSample( Result.FailedPaths, SourceFilePath );
+			Logger::Instance().Error().Log( "Failed to create decrypted file parent folder: {0}", TargetFilePath.parent_path().string() );
+			continue;
+		}
+
+		if ( this->DecryptFile( Token, Instance, SourceFilePath, TargetFilePath ) )
+		{
+			Result.SucceededFiles++;
+		}
+		else
+		{
+			Result.FailedFiles++;
+			AppendPathSample( Result.FailedPaths, SourceFilePath );
+		}
+	}
+
+	Logger::Instance().Info().Log
+	(
+		"Folder decrypted. Success: {0}, Failed: {1}, Skipped: {2}",
+		Result.SucceededFiles,
+		Result.FailedFiles,
+		Result.SkippedFiles
+	);
+
+	return Result;
 }
